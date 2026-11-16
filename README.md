@@ -76,3 +76,8 @@ SECURITY.md                   سياسة أمنية
 أضفنا لوحة عمليات جديدة إلى React مع FastAPI للمهمات المصرح بها فقط، ومصادقة برمز مشغل ورمز موافقة منفصل وسجل تدقيق SQLite. المهام المتاحة: جرد معلومات النظام، جرد الأدوات المحلية، وفحص TCP واحد داخل شبكة مختبر خاصة محددة صراحة. لا Shell عشوائي ولا فحص نطاقات عامة ولا اتصال تلقائي عند فتح الواجهة.
 
 تعليمات الإعداد التفصيلية: [docs/LOCAL_OPERATIONS_AR.md](docs/LOCAL_OPERATIONS_AR.md). ابدأ محلياً بالأمر: bash scripts/init-local.sh ثم شغّل API على 127.0.0.1:8000 وVite على 127.0.0.1:5173. رموز المصادقة لا تُنشر على GitHub ولا تُحقن في VITE_ أو Cloudflare Pages.
+
+
+## 15 Kali Tool Console
+
+The local **مركز العمليات** now includes a 15-tool inventory and approval-gated read-only helpers. See [the Arabic operator guide](docs/TOOL_OPERATIONS_AR.md). Sensitive C2 and credential tools are metadata-only; never expose the API publicly.

@@ -1,13 +1,22 @@
 """Local-only API for explicitly approved training operations."""
 from fastapi import FastAPI, Request
+from contextlib import asynccontextmanager
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .operations import router as operations_router, configured
+from .tooling import router as tooling_router, recover_interrupted_jobs
 
-app = FastAPI(title="KALI OSINT STAR API", version="0.2.0",
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    recover_interrupted_jobs()
+    yield
+
+
+app = FastAPI(title="KALI OSINT STAR API", version="0.3.0",
               description="Local-only allowlisted training operations",
-              openapi_url=None, docs_url=None, redoc_url=None)
+              openapi_url=None, docs_url=None, redoc_url=None, lifespan=lifespan)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 app.include_router(operations_router)
+app.include_router(tooling_router)
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
@@ -27,7 +36,7 @@ def capabilities():
     return {"mode": "training-only", "remote_execution": False,
             "vulnerability_scanning": False, "authentication_configured": configured(),
             "local_approved_tasks": configured(),
-            "features": ["health-check", "training-metadata", "approved-local-operations", "audit-log"],
+            "features": ["health-check", "training-metadata", "approved-local-operations", "read-only-tool-probes", "audit-log"],
             "notice": "No arbitrary shell, external scanning or C2 operations."}
 
 @app.get("/api/v1")
