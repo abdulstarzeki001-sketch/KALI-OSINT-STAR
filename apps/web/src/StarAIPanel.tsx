@@ -1,4 +1,5 @@
 import {useState} from 'react';
+import SafeMarkdown from './SafeMarkdown';
 import './star-ai.css';
 
 type Answer = {status?:string;model?:string;analysis?:string;notice?:string;error?:string};
@@ -14,6 +15,8 @@ export default function StarAIPanel() {
   const [filename,setFilename]=useState('');
   const [testState,setTestState]=useState<'idle'|'running'|'passed'|'failed'>('idle');
   const [testFeedback,setTestFeedback]=useState('');
+  const [resultView,setResultView]=useState<'formatted'|'source'>('formatted');
+  const [copyFeedback,setCopyFeedback]=useState('');
   async function readFile(file:File|undefined) {
     if(!file)return;
     if(file.size>60000){setError('الملف أكبر من الحد المسموح؛ الصق مقتطفاً بدون أسرار.');return;}
@@ -46,7 +49,7 @@ export default function StarAIPanel() {
 
   async function analyze(){
     if(report.trim().length<30||report.length>MAX_REPORT){setError('أدخل تقريراً من 30 إلى 18,000 حرف.');return;}
-    setLoading(true);setError('');setAnalysis('');
+    setLoading(true);setError('');setAnalysis('');setCopyFeedback('');setResultView('formatted');
     try {
       const result=await submitReport(report.trim(),question.trim());
       setAnalysis(result.analysis||'');setModel(result.model||'Workers AI');
@@ -55,7 +58,7 @@ export default function StarAIPanel() {
   }
 
   async function testAuthenticatedSession(){
-    setTestState('running');setTestFeedback('');setError('');
+    setTestState('running');setTestFeedback('');setError('');setCopyFeedback('');setResultView('formatted');
     const started=performance.now();
     try{
       const response=await submitReport(SAFE_TEST_REPORT,'Summarize the lab findings in Arabic and recommend defensive validation.');
@@ -67,6 +70,11 @@ export default function StarAIPanel() {
       setTestState('failed');
       setTestFeedback('لم يكتمل اختبار الجلسة: '+(e instanceof Error?e.message:'خطأ غير معروف'));
     }
+  }
+  async function copyReport(){
+    if(!analysis)return;
+    try{await navigator.clipboard.writeText(analysis);setCopyFeedback('تم نسخ التقرير إلى الحافظة');}
+    catch{setCopyFeedback('تعذر النسخ. استخدم خيار تنزيل Markdown.');}
   }
   function exportReport(){
     if(!analysis)return;
@@ -83,7 +91,26 @@ export default function StarAIPanel() {
     {testState!=='idle'&&testState!=='running'&&<p className={'ai-test-result '+(testState==='passed'?'ok':'failed')} role={testState==='failed'?'alert':'status'}>{testFeedback}</p>}
     <div className="ai-grid">
       <div className="ai-panel"><h2>01 — التقرير</h2><label htmlFor="star-ai-report">محتوى التقرير أو سجل التدريب</label><textarea id="star-ai-report" dir="auto" rows={13} value={report} maxLength={MAX_REPORT} onChange={e=>setReport(e.target.value)} placeholder="ألصق هنا تقرير المختبر أو مخرجات منقحة من بيانات حساسة..."/><div className="ai-toolbar"><label className="ai-upload">تحميل ملف TXT / JSON / MD / LOG<input type="file" accept=".txt,.json,.md,.log,text/plain,application/json" onChange={e=>void readFile(e.target.files?.[0])}/></label><span>{filename?filename+' · ':''}{report.length} / {MAX_REPORT}</span></div><label htmlFor="star-ai-question">سؤال تحليلي إضافي (اختياري)</label><input id="star-ai-question" type="text" maxLength={500} value={question} onChange={e=>setQuestion(e.target.value)} placeholder="مثلاً: رتّب المخاطر حسب الأولوية وكيفية المعالجة"/><button className="ai-submit" onClick={()=>void analyze()} disabled={loading||report.trim().length<30}>{loading?'جارٍ التحليل...':'تحليل التقرير بواسطة STAR AI'}</button></div>
-      <div className="ai-panel"><div className="ai-result-head"><h2>02 — النتائج والتحسينات الدفاعية</h2><button type="button" disabled={!analysis} onClick={exportReport}>تنزيل Markdown</button></div>{error&&<p className="ai-error" role="alert">{error}</p>}{analysis?<><p className="ai-model">تم إنشاء الإجابة بواسطة {model} · راجع الأدلة يدوياً</p><pre className="ai-result" dir="auto">{analysis}</pre></>:<div className="ai-empty">النتائج تظهر هنا بعد إرسال تقرير حقيقي. لن نولّد نتائج افتراضية أو ندّعي أن أدوات Kali فحصت جهازك.</div>}</div>
+      <div className="ai-panel ai-output-panel">
+        <div className="ai-result-head"><div><h2>02 — النتائج والتحسينات الدفاعية</h2><p className="ai-result-subtitle">تقرير قابل للقراءة، مع دعم العربية والأكواد والجداول</p></div></div>
+        {analysis&&<div className="ai-actions" aria-label="خيارات عرض التقرير">
+          <div className="ai-view-tabs" role="group" aria-label="طريقة العرض">
+            <button type="button" aria-pressed={resultView==='formatted'} className={resultView==='formatted'?'active':''} onClick={()=>setResultView('formatted')}>عرض منسق</button>
+            <button type="button" aria-pressed={resultView==='source'} className={resultView==='source'?'active':''} onClick={()=>setResultView('source')}>النص الأصلي</button>
+          </div>
+          <div className="ai-export-actions">
+            <button type="button" onClick={()=>void copyReport()}>نسخ</button>
+            <button type="button" onClick={exportReport}>تنزيل .md</button>
+          </div>
+        </div>}
+        {copyFeedback&&<p className="ai-copy-feedback" role="status">{copyFeedback}</p>}
+        {error&&<p className="ai-error" role="alert">{error}</p>}
+        {analysis?<><p className="ai-model">تم إنشاء الإجابة بواسطة {model} · راجع الأدلة يدوياً</p>
+          <div className="ai-result ai-rich-output" aria-label="نتيجة تحليل STAR AI" aria-live="polite">
+            {resultView==='formatted'?<SafeMarkdown source={analysis}/>:<pre className="ai-source-view" dir="auto">{analysis}</pre>}
+          </div>
+        </>:<div className="ai-empty">النتائج تظهر هنا بعد إرسال تقرير حقيقي. لن نولّد نتائج افتراضية أو ندّعي أن أدوات Kali فحصت جهازك.</div>}
+      </div>
     </div>
   </section>;
 }
