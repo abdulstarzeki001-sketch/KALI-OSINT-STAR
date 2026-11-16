@@ -16,3 +16,12 @@ Workers AI uses @cf/meta/llama-3.1-8b-instruct-fast; inference may incur charges
 
 ## Deployment
 GitHub is linked to Cloudflare Pages; build root apps/web, command npm run build, output dist. Both production and preview deployment were disabled until verified Access and service binding were created. Once enabled, push to main for deployment. If Access login does not work, leave deployment disabled until policy is repaired.
+
+## اختبار جلسة المستخدم المصادق عليها
+1. افتح https://kali-osint-star.pages.dev وسجّل الدخول عبر Cloudflare Access ببريد المالك المُصرح به.
+2. انتقل إلى STAR AI ثم اضغط **اختبار الجلسة والتحليل الآن**.
+3. سترسل الواجهة تقريراً وهمياً ثابتاً إلى POST /api/ai/analyze من نفس أصل الموقع، مع ملفات جلسة المستخدم المعتادة؛ لا توجد رموز ثابتة في الواجهة.
+4. **نجاح الاختبار الحقيقي** يعني استلام JSON بحالة `status: completed` ونص `analysis` غير فارغ. سيظهر النص وزمن الاستجابة التقريبي في الواجهة.
+5. إذا انتهت جلسة Access أو فشل الخادم أو الاشتراك في Workers AI، ستعرض الواجهة الخطأ دون اختلاق نتائج.
+
+اختبارات Node.js في CI تتحقق من منطق Page Function بوحدة خدمة اصطناعية فقط؛ لا تعادل تسجيل الدخول إلى Cloudflare Access أو اختبار متصفح مستخدم مسجّل. لا تشارك رموز المصادقة أو لقطات الشاشة التي تكشفها.

@@ -3,6 +3,7 @@ import './star-ai.css';
 
 type Answer = {status?:string;model?:string;analysis?:string;notice?:string;error?:string};
 const MAX_REPORT = 18000;
+const SAFE_TEST_REPORT = 'SYNTHETIC TEST ONLY. Authorized offline virtual lab: host 192.168.56.10 has SSH TCP/22 reachable; TCP/8080 unreachable; SSH patch status unknown. No exploitation performed and no credentials processed. Please suggest defensive validation and remediation.';
 export default function StarAIPanel() {
   const [report,setReport]=useState('');
   const [question,setQuestion]=useState('');
@@ -11,24 +12,61 @@ export default function StarAIPanel() {
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(false);
   const [filename,setFilename]=useState('');
+  const [testState,setTestState]=useState<'idle'|'running'|'passed'|'failed'>('idle');
+  const [testFeedback,setTestFeedback]=useState('');
   async function readFile(file:File|undefined) {
     if(!file)return;
     if(file.size>60000){setError('الملف أكبر من الحد المسموح؛ الصق مقتطفاً بدون أسرار.');return;}
     try {const contents=await file.text();if(contents.length>MAX_REPORT)throw new Error('المحتوى كبير؛ الحد 18,000 حرف.');setReport(contents);setFilename(file.name);setError('');}
     catch(e){setError(e instanceof Error?e.message:'تعذر قراءة الملف');}
   }
+  // Both controls use the same protected production endpoint; no mock is used in the browser.
+  async function submitReport(text:string,prompt:string):Promise<Answer> {
+    let response:Response;
+    try {
+      response=await fetch('/api/ai/analyze',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Accept':'application/json'},
+        credentials:'same-origin',
+        cache:'no-store',
+        body:JSON.stringify({report:text,question:prompt})
+      });
+    } catch {
+      throw new Error('تعذر الوصول إلى التحليل. تأكد من تسجيل الدخول عبر Cloudflare Access ثم أعد المحاولة.');
+    }
+    const contentType=response.headers.get('content-type')||'';
+    if(!contentType.toLowerCase().includes('application/json'))
+      throw new Error('الاستجابة ليست JSON. قد تكون الجلسة منتهية أو الموقع يعرض صفحة تسجيل الدخول.');
+    const result:Answer=await response.json().catch(()=>({error:'استجابة JSON غير صالحة'}));
+    if(!response.ok)throw new Error('HTTP '+response.status+' — '+(result.error||'تعذر تنفيذ الطلب'));
+    if(result.status!=='completed'||typeof result.analysis!=='string'||result.analysis.trim().length<30)
+      throw new Error('الخدمة لم تُرجع تحليلاً مكتملًا وقابلاً للقراءة.');
+    return result;
+  }
+
   async function analyze(){
     if(report.trim().length<30||report.length>MAX_REPORT){setError('أدخل تقريراً من 30 إلى 18,000 حرف.');return;}
     setLoading(true);setError('');setAnalysis('');
     try {
-      const response=await fetch('/api/ai/analyze',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},credentials:'same-origin',cache:'no-store',body:JSON.stringify({report:report.trim(),question:question.trim()})});
-      const contentType=response.headers.get('content-type')||'';
-      if(!contentType.includes('application/json'))throw new Error('خدمة التحليل غير مهيأة لهذا العنوان. استخدم النسخة المحمية على Cloudflare.');
-      const result:Answer=await response.json();
-      if(!response.ok||typeof result.analysis!=='string')throw new Error(result.error||'تعذر تحليل التقرير');
-      setAnalysis(result.analysis);setModel(result.model||'Workers AI');
-    }catch(e){setError(e instanceof Error?e.message:'تعذر الاتصال بخدمة التحليل');}
+      const result=await submitReport(report.trim(),question.trim());
+      setAnalysis(result.analysis||'');setModel(result.model||'Workers AI');
+    } catch(e){setError(e instanceof Error?e.message:'تعذر تحليل التقرير');}
     finally{setLoading(false);}
+  }
+
+  async function testAuthenticatedSession(){
+    setTestState('running');setTestFeedback('');setError('');
+    const started=performance.now();
+    try{
+      const response=await submitReport(SAFE_TEST_REPORT,'Summarize the lab findings in Arabic and recommend defensive validation.');
+      const elapsed=Math.round(performance.now()-started);
+      setAnalysis(response.analysis||'');setModel(response.model||'Workers AI');
+      setTestState('passed');
+      setTestFeedback('نجح الاختبار من جلسة المتصفح الحالية: استجابة HTTP ناجحة، حالة completed وتحليل فعلي. الزمن التقريبي '+elapsed+' ms. لا يعني هذا تشغيل أي فحص Kali.');
+    }catch(e){
+      setTestState('failed');
+      setTestFeedback('لم يكتمل اختبار الجلسة: '+(e instanceof Error?e.message:'خطأ غير معروف'));
+    }
   }
   function exportReport(){
     if(!analysis)return;
@@ -38,6 +76,11 @@ export default function StarAIPanel() {
   return <section className="star-ai page-animate" dir="rtl">
     <header className="ai-heading"><div><span className="eyebrow">CLOUDFLARE WORKERS AI / DEFENSIVE ANALYSIS</span><h1>STAR AI <span>Security Analyst</span></h1><p>حلّل تقارير مختبراتك، سجلات الدفاع، ومخرجات الأدوات. التحليل اقتراحات مبنية على النص المُرسل وليس اختباراً حقيقياً لأي هدف.</p></div><span className="ai-chip">AI ASSISTANT</span></header>
     <div className="ai-notice">خصوصية البيانات: النص الذي تُرسله سيُعالَج عبر Cloudflare Workers AI. لا تُرسل كلمات مرور، ملفات اعتماد، رموز API، بيانات شخصية أو تقارير حكومية غير مصرح بمشاركتها. لا يُحفظ النص في localStorage داخل هذه الصفحة.</div>
+    <div className="ai-selftest" aria-label="اختبار التحليل من جلسة مستخدم مصادق عليها">
+      <div><strong>اختبار التحليل من جلستي المسجّلة</strong><small>يرسل تقريراً وهمياً فقط إلى نفس مسار التحليل المحمي، ويتحقق من الاستجابة الحقيقية. لا يحتاج مشاركة الرمز أو كلمة السر.</small></div>
+      <button type="button" disabled={loading||testState==='running'} onClick={()=>void testAuthenticatedSession()}>{testState==='running'?'جارٍ الاختبار...':'اختبار الجلسة والتحليل الآن'}</button>
+    </div>
+    {testState!=='idle'&&testState!=='running'&&<p className={'ai-test-result '+(testState==='passed'?'ok':'failed')} role={testState==='failed'?'alert':'status'}>{testFeedback}</p>}
     <div className="ai-grid">
       <div className="ai-panel"><h2>01 — التقرير</h2><label htmlFor="star-ai-report">محتوى التقرير أو سجل التدريب</label><textarea id="star-ai-report" dir="auto" rows={13} value={report} maxLength={MAX_REPORT} onChange={e=>setReport(e.target.value)} placeholder="ألصق هنا تقرير المختبر أو مخرجات منقحة من بيانات حساسة..."/><div className="ai-toolbar"><label className="ai-upload">تحميل ملف TXT / JSON / MD / LOG<input type="file" accept=".txt,.json,.md,.log,text/plain,application/json" onChange={e=>void readFile(e.target.files?.[0])}/></label><span>{filename?filename+' · ':''}{report.length} / {MAX_REPORT}</span></div><label htmlFor="star-ai-question">سؤال تحليلي إضافي (اختياري)</label><input id="star-ai-question" type="text" maxLength={500} value={question} onChange={e=>setQuestion(e.target.value)} placeholder="مثلاً: رتّب المخاطر حسب الأولوية وكيفية المعالجة"/><button className="ai-submit" onClick={()=>void analyze()} disabled={loading||report.trim().length<30}>{loading?'جارٍ التحليل...':'تحليل التقرير بواسطة STAR AI'}</button></div>
       <div className="ai-panel"><div className="ai-result-head"><h2>02 — النتائج والتحسينات الدفاعية</h2><button type="button" disabled={!analysis} onClick={exportReport}>تنزيل Markdown</button></div>{error&&<p className="ai-error" role="alert">{error}</p>}{analysis?<><p className="ai-model">تم إنشاء الإجابة بواسطة {model} · راجع الأدلة يدوياً</p><pre className="ai-result" dir="auto">{analysis}</pre></>:<div className="ai-empty">النتائج تظهر هنا بعد إرسال تقرير حقيقي. لن نولّد نتائج افتراضية أو ندّعي أن أدوات Kali فحصت جهازك.</div>}</div>
