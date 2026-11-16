@@ -6,15 +6,16 @@ import {useGSAP} from '@gsap/react';
 import './styles.css';
 import './operations.css';
 import {OperationsPanel} from './OperationsPanel';
+import StarAIPanel from './StarAIPanel';
 
 gsap.registerPlugin(useGSAP);
-type Page = 'dashboard'|'tools'|'platforms'|'labs'|'roadmap'|'reports'|'operations'|'settings';
+type Page = 'dashboard'|'tools'|'platforms'|'labs'|'roadmap'|'reports'|'operations'|'ai'|'settings';
 type Tool = {name:string, group:string, desc:string, repo:string, command:string};
 type Lab = {id:number,platform:string,target:string,title:string,status:'جديد'|'قيد العمل'|'مكتمل'};
 const links: {id:Page,label:string,ico:string}[] = [
 {id:'dashboard',label:'لوحة التحكم',ico:'◈'},{id:'tools',label:'مكتبة الأدوات',ico:'⌘'},
 {id:'platforms',label:'منصات التدريب',ico:'◎'},{id:'labs',label:'المختبرات',ico:'▣'},
-{id:'roadmap',label:'مسار التدريب',ico:'↗'},{id:'reports',label:'التقارير',ico:'▤'},{id:'operations',label:'مركز العمليات',ico:'⌘'},{id:'settings',label:'الإعدادات',ico:'⚙'}];
+{id:'roadmap',label:'مسار التدريب',ico:'↗'},{id:'reports',label:'التقارير',ico:'▤'},{id:'operations',label:'مركز العمليات',ico:'⌘'},{id:'ai',label:'STAR AI',ico:'✧'},{id:'settings',label:'الإعدادات',ico:'⚙'}];
 const toolList:Tool[]=[
 {name:'Mythic C2',group:'Red Team',desc:'تنظيم اختبارات محاكاة الخصوم في مختبر معزول',repo:'https://github.com/its-a-feature/Mythic',command:'./mythic-cli health'},
 {name:'Sliver C2',group:'Red Team',desc:'محاكاة الاتصال بخادم قيادة وتحكم مصرح به',repo:'https://github.com/BishopFox/sliver',command:'sliver-server version'},
@@ -105,9 +106,10 @@ function App(){
  {page==='roadmap'&&<><div className="page-title page-animate"><span className="eyebrow">LEARNING ROADMAP</span><h1>ثمانية أسابيع نحو <span>نتائج قابلة للقياس</span></h1><p>سجّل التقدم الحقيقي لكل أسبوع بعد إنهاء تمارينه وتوثيق النتائج.</p></div><div className="roadmap-track page-animate"><div className="progress"><div style={{width:percent+'%'}}/></div><p>{percent}% مكتمل · {done.length} من {weeks.length} أسابيع</p></div><div className="week-grid page-animate">{weeks.map((x,i)=><label className={'week '+(done.includes(i)?'complete':'')} key={x}><input type="checkbox" checked={done.includes(i)} onChange={e=>setDone(z=>e.target.checked?[...z,i]:z.filter(y=>y!==i))}/><span className="week-number">W{String(i+1).padStart(2,'0')}</span><strong>{x}</strong><span className="checkmark">{done.includes(i)?'✓':'○'}</span></label>)}</div></>}
  {page==='reports'&&<><div className="page-title page-animate"><span className="eyebrow">REPORTING CENTER</span><h1>تقارير التدريب</h1><p>أنشئ تقرير Markdown يعكس بياناتك المحفوظة محلياً، ولا يدّعي تنفيذ فحوص.</p></div><div className="report-panel page-animate"><h2>تقرير STAR OSINT</h2><p>عدد المختبرات: <b>{labs.length}</b></p><p>الأسابيع المكتملة: <b>{done.length}/{weeks.length}</b></p><p>الأدوات المفضلة: <b>{favorites.length}</b></p><button className="primary" onClick={exportReport}>↓ تصدير Markdown</button></div></>}
  {page==='operations'&&<OperationsPanel/>}
+ {page==='ai'&&<StarAIPanel/>}
   {page==='settings'&&<><div className="page-title page-animate"><span className="eyebrow">SYSTEM SETTINGS</span><h1>إعدادات مساحة العمل</h1><p>المعلومات محفوظة داخل متصفحك؛ لا توجد مزامنة سحابية للمختبرات في هذا الإصدار.</p></div><div className="settings-panel page-animate"><div><strong>حالة API المحلية</strong><p>{api==='online'?'الاتصال بخادم FastAPI ناجح':'لم يتصل المتصفح بخادم FastAPI'}</p></div><div><strong>محرك Kali</strong><p>غير متصل. تنفيذ الأوامر عن بعد معطّل لأسباب أمنية.</p></div><div><strong>حفظ البيانات</strong><p>localStorage داخل المتصفح الحالي</p></div><button className="danger-action" onClick={()=>{if(confirm('حذف جميع مختبراتك وتقدمك المحلي؟')){setLabs([]);setDone([]);setFavorites([]);show('تم مسح البيانات المحلية')}}}>مسح البيانات المحلية</button></div></>}
  </main><footer>© KALI-OSINT-STAR · AUTHORIZED LABS ONLY · BUILT FOR DEFENSIVE RESEARCH</footer></div>
- <div className="mobile-nav">{links.filter(x=>['dashboard','platforms','labs','reports','operations'].includes(x.id)).map(x=><button key={x.id} className={page===x.id?'selected':''} onClick={()=>setPage(x.id)}><span>{x.ico}</span><small>{x.label}</small></button>)}</div>
+ <div className="mobile-nav">{links.filter(x=>['dashboard','labs','reports','ai','operations'].includes(x.id)).map(x=><button key={x.id} className={page===x.id?'selected':''} onClick={()=>setPage(x.id)}><span>{x.ico}</span><small>{x.label}</small></button>)}</div>
  {modal&&<div className="modal-backdrop" onMouseDown={()=>setModal(null)}><div className="modal" role="dialog" aria-modal="true" onMouseDown={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setModal(null)}>✕</button><span className="eyebrow">{modal.group} / TOOL DETAIL</span><h2>{modal.name}</h2><p>{modal.desc}</p><div className="command"><code>{modal.command}</code><button onClick={()=>copy(modal.command)}>نسخ</button></div><small>أمر مرجعي فقط: يتطلب تثبيت الأداة وبيئة مصرح بها.</small><a href={modal.repo} target="_blank" rel="noreferrer" className="modal-link">فتح المستودع الرسمي ↗</a></div></div>}
  {message&&<div className="toast" role="status">{message}</div>}
  </div></ReactLenis>;

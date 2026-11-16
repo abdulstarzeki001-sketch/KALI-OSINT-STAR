@@ -74,6 +74,7 @@ export function OperationsPanel() {
       await refresh();
     },verb==='approve'?'تم الاعتماد. يلزم ضغط تشغيل الآن.':verb==='run'?'انتهى التنفيذ وسُجلت النتيجة.':'تم إلغاء الطلب.');
   }
+  if (typeof window!=='undefined' && !['127.0.0.1','localhost'].includes(window.location.hostname)) return <section className="ops" dir="rtl"><div className="ops-panel"><h1>مركز Kali محلي فقط</h1><p>تشغيل أدوات Kali وإدخال رموز المشغل أو الموافقة مسموح من الواجهة المحلية على جهازك فقط. الموقع السحابي لا يتصل بجهازك ولا يطلب أسراره. استخدم STAR AI لتحليل التقارير النصية بدون تنفيذ أوامر.</p></div></section>;
   return <section className="ops" dir="rtl">
     <header className="ops-header"><div><span className="ops-eyebrow">SECURE LOCAL CONTROL PLANE</span><h1>مركز عمليات Kali</h1><p>وظائف محددة، اعتماد صريح، نتائج حقيقية، وسجل تدقيق محلي.</p></div><span className={'ops-status '+(connected?'connected':'')}>{connected?'● مصادقة ناجحة':'○ غير متصل'}</span></header>
     <div className="ops-warning"><b>حدود الأمان:</b> واجهة تشغيل محلية فقط. لا أوامر Shell عشوائية، ولا استهداف بوابات التدريب الرئيسية. لا تُنشر رموز المصادقة على GitHub أو Cloudflare Pages.</div>
