@@ -62,7 +62,7 @@ export function ToolingPanel({token}:{token:string}){
         {j.status==='approved'&&<button disabled={busy} onClick={()=>void act(()=>req('jobs/'+j.id+'/run',token,'POST'),'المهمة دخلت الطابور')}>تشغيل</button>}
         {['pending_approval','approved','queued'].includes(j.status)&&<button className="ops-secondary" disabled={busy} onClick={()=>void act(()=>req('jobs/'+j.id+'/cancel',token,'POST'),'تم الإلغاء')}>إلغاء</button>}
       </div>
-      {j.result&&<pre dir="ltr">{JSON.stringify(j.result,null,2)}</pre>}
+      {j.result!=null&&<pre dir="ltr">{JSON.stringify(j.result,null,2)}</pre>}
     </article>)}</div>
   </section>;
 }
