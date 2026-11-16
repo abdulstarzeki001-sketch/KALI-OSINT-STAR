@@ -8,14 +8,18 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "test:cloudflare": "node --test tests/ai-gateway.test.mjs"
+    "test:cloudflare": "node --test tests/ai-gateway.test.mjs",
+    "test:markdown": "node --test tests/markdown-render.test.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
     "gsap": "^3.13.0",
     "lenis": "^1.3.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "rehype-sanitize": "^6.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",
