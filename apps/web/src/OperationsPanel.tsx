@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import './operations.css';
+import './tooling.css';
+import {ToolingPanel} from './ToolingPanel';
 
 type Job = { id:string; kind:string; target:string|null; port:number|null; status:string; result:unknown; created_at:string };
 type Audit = { id:number; time:string; action:string; detail:string; job_id:string };
@@ -79,6 +81,7 @@ export function OperationsPanel() {
     {error&&<div role="alert" className="ops-error">{error}</div>}
     {message&&<div role="status" className="ops-success">{message}</div>}
     {connected&&<>
+      <ToolingPanel token={operator}/>
       <div className="ops-columns">
         <div className="ops-panel"><h2>01 — طلب مهمة جديدة</h2><label>نوع المهمة<select value={kind} onChange={e=>setKind(e.target.value)}>{Object.keys(names).map(key=><option value={key} key={key}>{names[key]}</option>)}</select></label>{kind==='lab_port_check'&&<><label>IPv4 خاص بالمختبر<input dir="ltr" autoComplete="off" placeholder="192.168.56.10" value={target} onChange={e=>setTarget(e.target.value)}/></label><label>منفذ من القائمة الآمنة<select value={port} onChange={e=>setPort(Number(e.target.value))}>{ports.map(p=><option value={p} key={p}>{p}</option>)}</select></label></>}<p>إنشاء الطلب لا يطلق أي اتصال أو مهمة قبل الاعتماد.</p><button onClick={create} disabled={busy||(kind==='lab_port_check'&&!target.trim())}>إنشاء طلب بانتظار الموافقة</button></div>
         <div className="ops-panel"><h2>02 — اعتماد مستقل</h2><label>رمز الموافقة الثاني<input type="password" autoComplete="off" spellCheck={false} value={approver} onChange={e=>setApprover(e.target.value)} placeholder="STAR_APPROVAL_TOKEN"/></label><label>سبب الموافقة<input maxLength={250} value={reason} onChange={e=>setReason(e.target.value)} placeholder="مثال: مختبر مملوك لي ضمن النطاق المصرّح"/></label><label className="ops-agree"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>أؤكد أن المهمة ضمن نطاق مختبر أملكه أو مصرح لي باختباره.</label><p>الاعتماد والتشغيل خطوتان منفصلتان.</p></div>
