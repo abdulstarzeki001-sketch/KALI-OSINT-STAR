@@ -6,7 +6,8 @@ import {useGSAP} from '@gsap/react';
 import './styles.css';
 import './operations.css';
 import {OperationsPanel} from './OperationsPanel';
-import StarAIPanel from './StarAIPanel';
+// Defer the Markdown renderer to the STAR AI screen.
+const StarAIPanel = React.lazy(() => import('./StarAIPanel'));
 
 gsap.registerPlugin(useGSAP);
 type Page = 'dashboard'|'tools'|'platforms'|'labs'|'roadmap'|'reports'|'operations'|'ai'|'settings';
@@ -106,7 +107,7 @@ function App(){
  {page==='roadmap'&&<><div className="page-title page-animate"><span className="eyebrow">LEARNING ROADMAP</span><h1>ثمانية أسابيع نحو <span>نتائج قابلة للقياس</span></h1><p>سجّل التقدم الحقيقي لكل أسبوع بعد إنهاء تمارينه وتوثيق النتائج.</p></div><div className="roadmap-track page-animate"><div className="progress"><div style={{width:percent+'%'}}/></div><p>{percent}% مكتمل · {done.length} من {weeks.length} أسابيع</p></div><div className="week-grid page-animate">{weeks.map((x,i)=><label className={'week '+(done.includes(i)?'complete':'')} key={x}><input type="checkbox" checked={done.includes(i)} onChange={e=>setDone(z=>e.target.checked?[...z,i]:z.filter(y=>y!==i))}/><span className="week-number">W{String(i+1).padStart(2,'0')}</span><strong>{x}</strong><span className="checkmark">{done.includes(i)?'✓':'○'}</span></label>)}</div></>}
  {page==='reports'&&<><div className="page-title page-animate"><span className="eyebrow">REPORTING CENTER</span><h1>تقارير التدريب</h1><p>أنشئ تقرير Markdown يعكس بياناتك المحفوظة محلياً، ولا يدّعي تنفيذ فحوص.</p></div><div className="report-panel page-animate"><h2>تقرير STAR OSINT</h2><p>عدد المختبرات: <b>{labs.length}</b></p><p>الأسابيع المكتملة: <b>{done.length}/{weeks.length}</b></p><p>الأدوات المفضلة: <b>{favorites.length}</b></p><button className="primary" onClick={exportReport}>↓ تصدير Markdown</button></div></>}
  {page==='operations'&&<OperationsPanel/>}
- {page==='ai'&&<StarAIPanel/>}
+ {page==='ai'&&<React.Suspense fallback={<div role="status" className="report-panel" aria-live="polite">جارٍ تحميل STAR AI...</div>}><StarAIPanel/></React.Suspense>}
   {page==='settings'&&<><div className="page-title page-animate"><span className="eyebrow">SYSTEM SETTINGS</span><h1>إعدادات مساحة العمل</h1><p>المعلومات محفوظة داخل متصفحك؛ لا توجد مزامنة سحابية للمختبرات في هذا الإصدار.</p></div><div className="settings-panel page-animate"><div><strong>حالة API المحلية</strong><p>{api==='online'?'الاتصال بخادم FastAPI ناجح':'لم يتصل المتصفح بخادم FastAPI'}</p></div><div><strong>محرك Kali</strong><p>غير متصل. تنفيذ الأوامر عن بعد معطّل لأسباب أمنية.</p></div><div><strong>حفظ البيانات</strong><p>localStorage داخل المتصفح الحالي</p></div><button className="danger-action" onClick={()=>{if(confirm('حذف جميع مختبراتك وتقدمك المحلي؟')){setLabs([]);setDone([]);setFavorites([]);show('تم مسح البيانات المحلية')}}}>مسح البيانات المحلية</button></div></>}
  </main><footer>© KALI-OSINT-STAR · AUTHORIZED LABS ONLY · BUILT FOR DEFENSIVE RESEARCH</footer></div>
  <div className="mobile-nav">{links.filter(x=>['dashboard','labs','reports','ai','operations'].includes(x.id)).map(x=><button key={x.id} className={page===x.id?'selected':''} onClick={()=>setPage(x.id)}><span>{x.ico}</span><small>{x.label}</small></button>)}</div>
