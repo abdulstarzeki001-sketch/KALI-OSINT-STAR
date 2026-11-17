@@ -1,0 +1,12 @@
+{
+  "name": "KALI OSINT STAR — Cyber Operations",
+  "short_name": "STAR Cyber",
+  "description": "منصة إدارة مختبرات وتدريب سيبراني",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/#dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#070d15",
+  "theme_color": "#070d15"
+}
