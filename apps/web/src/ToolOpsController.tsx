@@ -13,7 +13,8 @@ type ProbeResult={
 };
 type Catalog={source:string;checkedAt:string;tools:ToolStatus[];history:ProbeResult[];notice:string};
 type InstallPlan={policy:string;method:string;package:string|null;command:string|null;compatibility:string;requiresApproval:boolean;executed:boolean;installedByManager:boolean};
-type InstallCatalog={tools:Array<ToolStatus & {install:InstallPlan}>;summary:{total:number;installed:number;missing:number;automatedInstallsEnabled:boolean};persistence:{homePersisted:boolean;initialized:boolean;restoration:string}};
+type InstallJob={tool_id:string;status:'running'|'interrupted'|'succeeded'|'failed'|'timed_out';startedAt:string|null;finishedAt:string|null;exitCode:number|null;output:string};
+type InstallCatalog={tools:Array<ToolStatus & {install:InstallPlan}>;summary:{total:number;installed:number;missing:number;automatedInstallsEnabled:boolean};jobs?:Record<string,InstallJob>;busy?:boolean;persistence:{homePersisted:boolean;initialized:boolean;restoration:string}};
 type ResultResponse={result:ProbeResult;plan?:{tool_id:string;action:string};
   explanation?:string|null;aiSource?:string;};
 type Props={tools:LibraryTool[];favorites:string[];onToggleFavorite:(name:string)=>void;
@@ -41,6 +42,18 @@ const issues:Record<string,string>={
  TOOLS_INVALID_PROMPT:'أدخل طلباً من 1 إلى 400 حرف.',
  TOOLS_BAD_JSON:'الطلب غير صالح.',
  TOOLS_INPUT_TOO_LARGE:'الطلب أكبر من الحد المسموح.',
+ INSTALL_APPROVAL_REQUIRED:'التثبيت يحتاج موافقة صريحة من المالك.',
+ INSTALL_TOOL_NOT_APPROVED:'التثبيت التلقائي غير معتمد لهذه الأداة.',
+ INSTALL_PERSISTENCE_REQUIRED:'التخزين الدائم غير متصل بالحاوية.',
+ INSTALL_TRUSTED_PYTHON_REQUIRED:'بيئة Python الموثوقة غير متاحة.',
+ INSTALL_DISK_SPACE_LOW:'مساحة القرص الدائم غير كافية للتثبيت (250MB مطلوبة).',
+ INSTALL_ENVIRONMENT_UNAVAILABLE:'تعذّر فحص بيئة تثبيت الأدوات.',
+ INSTALL_STATE_UNWRITABLE:'تعذّر حفظ سجل التثبيت على القرص.',
+ INSTALL_ALREADY_SUCCEEDED:'تم تثبيت الأداة بواسطة المدير مسبقاً.',
+ INSTALL_BUSY:'يوجد تثبيت آخر جارٍ.',
+ INSTALL_RATE_LIMIT:'طلب تثبيت متكرر بسرعة.',
+ INSTALL_START_FAILED:'تعذّر بدء عملية التثبيت.',
+ TOOLS_INSTALL_UNAVAILABLE:'خدمة تثبيت الأدوات غير متاحة.',
  TERMINAL_BRIDGE_UNAVAILABLE:'تعذّر الاتصال بالخدمة المحمية.'
 };
 async function api<T>(route:string,body:unknown={}):Promise<T>{
@@ -69,6 +82,7 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
  const [results,setResults]=useState<Record<string,ProbeResult>>({});
  const [loading,setLoading]=useState(true);
  const [busy,setBusy]=useState('');
+ const [installBusy,setInstallBusy]=useState('');
  const [error,setError]=useState('');
  const [prompt,setPrompt]=useState('');
  const [aiAnswer,setAiAnswer]=useState('');
@@ -89,6 +103,8 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
   finally{setLoading(false);}
  },[]);
  useEffect(()=>{void refresh();},[refresh]);
+ const installationRunning=!!installCatalog?.busy || Object.values(installCatalog?.jobs||{}).some(j=>j.status==='running');
+ useEffect(()=>{if(!installationRunning)return;const timer=window.setInterval(()=>{void refresh();},5000);return()=>window.clearInterval(timer);},[installationRunning,refresh]);
  const statuses=useMemo(()=>new Map(catalog?.tools.map(x=>[x.id,x])||[]),[catalog]);
  async function run(tool:string,action:'inspect'|'version'){
   if(busy)return;
@@ -114,6 +130,16 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
   }catch(e){setError(e instanceof Error?e.message:'فشل التوجيه');}
   finally{setBusy('');}
  }
+ async function installTool(toolId:string,name:string){
+  if(busy||installBusy||installCatalog?.busy)return;
+  if(!window.confirm('هل توافق على تثبيت '+name+' في Python venv داخل Railway؟ سيتم تنزيل الحزم من PyPI وستُستهلك مساحة القرص الدائم.'))return;
+  setInstallBusy(toolId);setError('');
+  try{
+   await api<{job:InstallJob}>('install/execute',{tool_id:toolId,approval:'I_APPROVE_RAILWAY_TOOL_INSTALL'});
+   await refresh();
+  }catch(e){setError(e instanceof Error?e.message:'فشل بدء التثبيت');}
+  finally{setInstallBusy('');}
+ }
  async function copy(text:string){try{await navigator.clipboard.writeText(text);}catch{setError('تعذر النسخ من هذا المتصفح');}}
  const installedCount=catalog?.tools.filter(x=>x.installed).length??null;
  return <section className="star-toolops" aria-label="مركز أدوات Linux الحقيقي">
@@ -135,7 +161,7 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
   </form>
   {error&&<div className="star-toolops-error" role="alert">{error}</div>}
   <div className="tools-grid page-animate star-toolops-grid">{tools.map((tool,i)=>{
-   const id=ids[tool.name];const st=statuses.get(id);const result=results[id];const install=installCatalog?.tools.find(x=>x.id===id)?.install;
+   const id=ids[tool.name];const st=statuses.get(id);const result=results[id];const install=installCatalog?.tools.find(x=>x.id===id)?.install;const job=installCatalog?.jobs?.[id];
    return <article className="tool-card star-toolops-card" key={tool.name}>
     <div className="tool-top"><span className="tool-index">{String(i+1).padStart(2,'0')}</span>
      <button title="المفضلة" className={'star '+(favorites.includes(tool.name)?'on':'')}
@@ -146,7 +172,14 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
       {st?.executable&&<code dir="ltr">{st.executable}</code>}
     </div>
     <details className="star-toolops-guide"><summary>حالة وخطة التثبيت</summary>
-      {install?<><p>{install.compatibility}</p><p>السياسة: {install.policy==='owner_terminal_approval'?'تثبيت يدوي بموافقة المالك':install.policy==='manual_review'?'مراجعة يدوية': 'مختبر منفصل'}</p>{install.command&&<div className="star-toolops-command"><code dir="ltr">{install.command}</code><button type="button" onClick={()=>void copy(install.command!)}>نسخ</button></div>}<small>لم يُنفذ التثبيت تلقائياً. تحقق من توافق البيئة قبل تشغيل أي أمر.</small></>:<p>خطة التثبيت غير متاحة من البوابة حالياً.</p>}
+      {install?<><p>{install.compatibility}</p><p>السياسة: {install.policy==='owner_one_click'?'تثبيت بضغطة واحدة بعد موافقة المالك':install.policy==='owner_terminal_approval'?'تثبيت يدوي بموافقة المالك':install.policy==='manual_review'?'مراجعة يدوية': 'مختبر منفصل'}</p>{install.command&&<div className="star-toolops-command"><code dir="ltr">{install.command}</code><button type="button" onClick={()=>void copy(install.command!)}>نسخ</button></div>}<small>الأوامر مرجعية. التثبيت المباشر لا يُنفّذ إلا بعد موافقتك، وللأدوات المعتمدة فقط.</small></>:<p>خطة التثبيت غير متاحة من البوابة حالياً.</p>}
+      {install?.policy==='owner_one_click'&&!st?.installed&&<button type="button" disabled={!!installBusy||!!busy||!!installCatalog?.busy||job?.status==='running'} onClick={()=>void installTool(id,tool.name)}>
+        {installBusy===id?'جارٍ إرسال الطلب...':job?.status==='running'?'التثبيت جارٍ...':'تثبيت مباشر بموافقتي'}
+       </button>}
+      {job&&<div className="star-toolops-result" role="status">
+        <strong>{job.status==='succeeded'?'اكتمل التثبيت بنجاح':job.status==='running'?'جارٍ تنزيل وتثبيت الأداة':job.status==='timed_out'?'انتهت مهلة التثبيت':job.status==='interrupted'?'توقف التثبيت بعد إعادة تشغيل الخادم':'فشل التثبيت؛ راجع السجل'}</strong>
+        {job.output&&<pre dir="ltr">{job.output.slice(-1600)}</pre>}
+       </div>}
     </details>
     <details className="star-toolops-guide"><summary>المميزات وطريقة التشغيل</summary>
       <p>{st?.guide||'اعرض حالة التثبيت أولاً. تشغيل الأدوات المتقدمة يحتاج مختبراً مخصصاً.'}</p>

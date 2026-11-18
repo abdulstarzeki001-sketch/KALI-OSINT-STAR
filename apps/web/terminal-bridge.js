@@ -17,6 +17,7 @@ const ROUTES={
   'training/verify':{method:'POST',upstream:'training/verify'},
   'tools/catalog':{method:'POST',upstream:'tools/catalog'},
   'tools/install/catalog':{method:'POST',upstream:'tools/install/catalog'},
+  'tools/install/execute':{method:'POST',upstream:'tools/install/execute'},
   'tools/run':{method:'POST',upstream:'tools/run'},
   'tools/assistant':{method:'POST',upstream:'tools/assistant'}
 };
@@ -71,7 +72,7 @@ export async function handleTerminalFunction(context,route) {
    }catch(_){return json('TRAINING_BAD_JSON',400);}
    headers.set('Content-Type','application/json');
  }
- if(route==='tools/run'||route==='tools/assistant'){
+ if(route==='tools/run'||route==='tools/assistant'||route==='tools/install/execute'){
    const declared=Number(request.headers.get('Content-Length')||0);
    if(declared>2048)return json('TOOLS_INPUT_TOO_LARGE',413);
    trainingBody=await request.text();
@@ -79,6 +80,11 @@ export async function handleTerminalFunction(context,route) {
    try{
      const parsed=JSON.parse(trainingBody);
      if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return json('TOOLS_BAD_JSON',400);
+     if(route==='tools/install/execute' &&
+        (Object.keys(parsed).sort().join(',')!=='approval,tool_id' ||
+         parsed.approval!=='I_APPROVE_RAILWAY_TOOL_INSTALL'||
+         !['certipy','impacket','frida'].includes(parsed.tool_id)))
+        return json('INSTALL_APPROVAL_REQUIRED',400);
      if(route==='tools/run' &&
         (typeof parsed.tool_id!=='string'||!/^[-a-z0-9]{2,32}$/.test(parsed.tool_id)||
          !['inspect','version'].includes(parsed.action)||
