@@ -6,6 +6,11 @@ type Answer = {status?:string;model?:string;analysis?:string;notice?:string;erro
 const MAX_REPORT = 18000;
 const SAFE_TEST_REPORT = 'SYNTHETIC TEST ONLY. Authorized offline virtual lab: host 192.168.56.10 has SSH TCP/22 reachable; TCP/8080 unreachable; SSH patch status unknown. No exploitation performed and no credentials processed. Please suggest defensive validation and remediation.';
 export default function StarAIPanel() {
+  const [toolCommand,setToolCommand]=useState('');
+  const [toolWorking,setToolWorking]=useState(false);
+  const [toolResponse,setToolResponse]=useState('');
+  const [toolOutput,setToolOutput]=useState('');
+  const [toolError,setToolError]=useState('');
   const [report,setReport]=useState('');
   const [question,setQuestion]=useState('');
   const [analysis,setAnalysis]=useState('');
@@ -17,6 +22,45 @@ export default function StarAIPanel() {
   const [testFeedback,setTestFeedback]=useState('');
   const [resultView,setResultView]=useState<'formatted'|'source'>('formatted');
   const [copyFeedback,setCopyFeedback]=useState('');
+  async function executeToolPrompt(){
+    if(!toolCommand.trim()||toolCommand.length>400||toolWorking)return;
+    setToolWorking(true);setToolError('');setToolResponse('');setToolOutput('');
+    try{
+      const response=await fetch('/api/terminal/tools/assistant',{method:'POST',
+        credentials:'same-origin',cache:'no-store',
+        headers:{'Accept':'application/json','Content-Type':'application/json'},
+        body:JSON.stringify({prompt:toolCommand.trim()})
+      });
+      if(!(response.headers.get('content-type')||'').includes('application/json'))
+        throw Error('انتهت جلسة Cloudflare Access أو الاستجابة ليست JSON');
+      const data=await response.json() as {
+        code?:string;result?:{tool_id:string;installed:boolean;executed:boolean;
+          outcome:string;stdout:string;stderr:string;exitCode:number|null};
+        explanation?:string|null;aiSource?:string;
+      };
+      if(!response.ok) {
+        const errors:Record<string,string>={
+          TOOLS_REQUIRES_AUTHORIZED_LAB:'لا يُسمح بالتنفيذ التلقائي لهذا الطلب. يلزم مختبر وموافقة صريحة.',
+          TOOLS_NAME_REQUIRED:'اذكر أداة واحدة من مكتبة الأدوات الـ15.',
+          TOOLS_AMBIGUOUS:'اختر أداة واحدة، وليس عدة أدوات في طلب واحد.',
+          TOOLS_ACTION_NOT_ALLOWED:'الفحص المطلوب غير مسموح تلقائياً لهذه الأداة.',
+          TOOLS_RATE_LIMIT:'الطلبات متقاربة جداً، جرّب مجدداً.',
+        };
+        throw Error(errors[data.code||'']||data.code||'فشل تنفيذ الطلب');
+      }
+      const r=data.result;
+      if(!r)throw Error('النتيجة لا تتضمن فحصاً من Railway');
+      setToolResponse((data.explanation||'').trim()||
+        (r.installed?'عُثر على الملف داخل Railway. ':'لم يُكتشف ملف الأداة في Railway. ')+
+        (r.executed?'تم تشغيل أمر إصدار ثابت.':'أُجري جرد محلي فقط دون تشغيل الأداة.'));
+      setToolOutput([
+        'Tool: '+r.tool_id,'Installed: '+r.installed,'Executed: '+r.executed,
+        'Outcome: '+r.outcome,'Exit code: '+(r.exitCode??'not run'),
+        (r.stdout||r.stderr||'').slice(0,2000)
+      ].join('\n'));
+    }catch(e){setToolError(e instanceof Error?e.message:'تعذّر تنفيذ فحص الأدوات');}
+    finally{setToolWorking(false);}
+  }
   async function readFile(file:File|undefined) {
     if(!file)return;
     if(file.size>60000){setError('الملف أكبر من الحد المسموح؛ الصق مقتطفاً بدون أسرار.');return;}
@@ -84,6 +128,17 @@ export default function StarAIPanel() {
   return <section className="star-ai page-animate" dir="rtl">
     <header className="ai-heading"><div><span className="eyebrow">CLOUDFLARE WORKERS AI / DEFENSIVE ANALYSIS</span><h1>STAR AI <span>Security Analyst</span></h1><p>حلّل تقارير مختبراتك، سجلات الدفاع، ومخرجات الأدوات. التحليل اقتراحات مبنية على النص المُرسل وليس اختباراً حقيقياً لأي هدف.</p></div><span className="ai-chip">AI ASSISTANT</span></header>
     <div className="ai-notice">خصوصية البيانات: النص الذي تُرسله سيُعالَج عبر Cloudflare Workers AI. لا تُرسل كلمات مرور، ملفات اعتماد، رموز API، بيانات شخصية أو تقارير حكومية غير مصرح بمشاركتها. لا يُحفظ النص في localStorage داخل هذه الصفحة.</div>
+    <form className="ai-tool-command" onSubmit={e=>{e.preventDefault();void executeToolPrompt();}}>
+      <div><strong>STAR AI → Railway Tool Executor</strong><small>مثال: «افحص Frida» أو «اعرض إصدار NetExec». ينفذ فحصاً محلياً ثابتاً فقط، ولا يرسل أوامر Shell أو يبدأ C2 تلقائياً.</small></div>
+      <div className="ai-tool-command-row">
+        <input aria-label="طلب استخدام أداة من الذكاء الاصطناعي" value={toolCommand} maxLength={400}
+          onChange={e=>setToolCommand(e.target.value)} placeholder="افحص Frida داخل Railway" dir="auto"/>
+        <button disabled={toolWorking||!toolCommand.trim()} type="submit">{toolWorking?'جارٍ التنفيذ...':'نفّذ الفحص'}</button>
+      </div>
+      {toolError&&<p role="alert" className="ai-error">{toolError}</p>}
+      {toolResponse&&<div className="ai-tool-command-result" role="status"><p>{toolResponse}</p>
+        <pre dir="ltr">{toolOutput}</pre></div>}
+    </form>
     <div className="ai-selftest" aria-label="اختبار التحليل من جلسة مستخدم مصادق عليها">
       <div><strong>اختبار التحليل من جلستي المسجّلة</strong><small>يرسل تقريراً وهمياً فقط إلى نفس مسار التحليل المحمي، ويتحقق من الاستجابة الحقيقية. لا يحتاج مشاركة الرمز أو كلمة السر.</small></div>
       <button type="button" disabled={loading||testState==='running'} onClick={()=>void testAuthenticatedSession()}>{testState==='running'?'جارٍ الاختبار...':'اختبار الجلسة والتحليل الآن'}</button>

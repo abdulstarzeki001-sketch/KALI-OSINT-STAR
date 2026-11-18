@@ -50,3 +50,23 @@
  .ai-panel .ai-view-tabs button,.ai-panel .ai-export-actions button{flex:1;min-width:0}
  .ai-panel,.ai-selftest{min-width:0}
 }
+
+
+/* Protected real Railway tool probes inside STAR AI; no arbitrary shell input. */
+.ai-tool-command{display:grid;gap:8px;border:1px solid #356b65;background:#102b2d;
+ border-radius:12px;padding:12px;margin:11px 0}
+.ai-tool-command>div:first-child{display:grid;gap:4px}
+.ai-tool-command strong{font-size:13px;color:#8ce7ca}
+.ai-tool-command small{font-size:11px;color:#b4d1cc;line-height:1.6}
+.ai-tool-command-row{display:flex;align-items:center;gap:7px}
+.ai-tool-command-row input{flex:1;min-width:0;border:1px solid #315c63;
+ border-radius:7px;min-height:40px;padding:8px;background:#0c1c28;color:#fff;font-size:16px}
+.ai-tool-command-row button{flex:none;min-height:40px;border:1px solid #64d8b7;
+ background:#45bea2;color:#052621;border-radius:7px;padding:7px 12px;font-size:11px;font-weight:700}
+.ai-tool-command-row button:disabled{opacity:.52}
+.ai-tool-command-result{border:1px solid #38816d;border-radius:8px;padding:9px;background:#0d302b}
+.ai-tool-command-result p{font-size:11px;line-height:1.7;color:#e5f9ed;margin:0 0 6px;white-space:pre-wrap}
+.ai-tool-command-result pre{font:10px/1.5 ui-monospace,monospace;color:#a6eed8;
+ background:#061c22;border-radius:6px;padding:9px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto}
+@media(max-width:760px){.ai-tool-command{padding:9px}.ai-tool-command-row{flex-wrap:wrap}
+ .ai-tool-command-row input{flex:1 1 100%}.ai-tool-command-row button{width:100%}}

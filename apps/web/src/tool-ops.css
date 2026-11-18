@@ -1,0 +1,56 @@
+.star-toolops{min-width:0}
+.star-toolops-head{display:flex;justify-content:space-between;gap:13px;align-items:center;padding:13px 15px;background:linear-gradient(115deg,#103430,#101e2b);border:1px solid #306e61;border-radius:13px;margin-bottom:9px}
+.star-toolops-head h2{font-size:17px;margin:4px 0 5px;color:#ebfff8}
+.star-toolops-head p{font-size:11px;line-height:1.65;max-width:780px;margin:0;color:#aac9c4}
+.star-toolops-count{background:#0b2426;border:1px solid #2d7564;border-radius:9px;padding:8px 10px;min-width:85px;text-align:center;flex:none}
+.star-toolops-count strong{display:block;font-size:21px;color:#79e4bf;line-height:1.3}
+.star-toolops-count span{font-size:9px;color:#b9cec9}
+.star-toolops-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:9px}
+.star-toolops-actions button,.star-toolops-buttons button{border:1px solid #326258;color:#b9f3e0;background:#143b39;border-radius:7px;padding:7px 9px;font-size:11px;min-height:34px}
+.star-toolops-actions small{color:#91b1b3;font-size:10px}
+.star-toolops-ai{background:#0c1e2b;border:1px solid #32505e;border-radius:11px;padding:11px;margin-bottom:10px;display:grid;gap:7px}
+.star-toolops-ai label{display:grid;gap:3px}
+.star-toolops-ai label strong{font-size:13px;color:#d0ffef}
+.star-toolops-ai label small{color:#a6bcc4;font-size:10px;line-height:1.65}
+.star-toolops-ai>div:not(.star-toolops-ai-answer){display:flex;gap:7px;align-items:center}
+.star-toolops-ai input{flex:1;min-width:0;border:1px solid #365967;border-radius:8px;padding:8px;color:#fff;background:#0b1722;font-size:16px;min-height:40px}
+.star-toolops-ai button{flex:none;min-height:40px;padding:7px 10px;font-size:11px}
+.star-toolops-ai-answer{background:#102f2d;border:1px solid #347a65;border-radius:9px;padding:9px}
+.star-toolops-ai-answer strong{color:#82e5c0;font-size:11px}
+.star-toolops-ai-answer p{white-space:pre-wrap;margin:5px 0;font-size:11px;line-height:1.7;color:#e4f6f1}
+.star-toolops-error{border:1px solid #9d5252;background:#3c2428;padding:9px;color:#ffcdc8;border-radius:8px;margin-bottom:10px;font-size:11px}
+.star-toolops-card{min-width:0;min-height:0;padding:13px;gap:7px}
+.star-toolops-card h3{margin:2px 0;font-size:14px}
+.star-toolops-card>p{margin:0;line-height:1.65;font-size:11px}
+.star-toolops-state{display:flex;align-items:center;gap:6px;flex-wrap:wrap;border:1px solid #36505e;background:#132330;border-radius:7px;padding:6px 7px;color:#afc6cc;font-size:10px}
+.star-toolops-state.installed{border-color:#32836c;color:#a3efd2}
+.star-toolops-state.missing{color:#d1b4a8}
+.star-toolops-state code{font-size:10px;background:#07151c;border-radius:4px;padding:3px}
+.star-toolops-guide{border-top:1px solid #293e4c;border-bottom:1px solid #293e4c;padding:6px 0}
+.star-toolops-guide summary{cursor:pointer;color:#8fe1ce;font-size:11px;line-height:1.5}
+.star-toolops-guide p{font-size:10px;margin:8px 0;line-height:1.6}
+.star-toolops-guide small{font-size:10px;color:#9bb5bb}
+.star-toolops-command{display:flex;align-items:center;gap:5px;margin:6px 0;padding:6px;border-radius:7px;background:#091823;border:1px solid #2a4953}
+.star-toolops-command code{min-width:0;flex:1;color:#8de8c4;font-size:10px;overflow-wrap:anywhere}
+.star-toolops-command button{flex:none;border:1px solid #296c5a;border-radius:5px;padding:4px 7px;color:#b4f6e0;font-size:10px}
+.star-toolops-buttons{display:flex;flex-wrap:wrap;gap:5px}
+.star-toolops-buttons button{flex:1;min-width:65px}
+.star-toolops-buttons button:disabled,.star-toolops-actions button:disabled,.star-toolops-ai button:disabled{opacity:.5;cursor:not-allowed}
+.star-toolops-result{display:grid;gap:4px;border:1px solid #315d5c;background:#0b2228;border-radius:8px;padding:8px}
+.star-toolops-result strong{color:#a4ead0;font-size:10px}
+.star-toolops-result small{font-size:9px;color:#a7bec4}
+.star-toolops-result pre{max-height:130px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:10px/1.6 ui-monospace,monospace;color:#b4f1d6;padding:6px;background:#07151e;border-radius:5px;text-align:left}
+.star-toolops-card .tool-actions{margin-top:3px}
+@media(max-width:760px){
+ .star-toolops-head{padding:10px;gap:8px}
+ .star-toolops-head h2{font-size:14px}
+ .star-toolops-head p{font-size:10px}
+ .star-toolops-count strong{font-size:17px}
+ .star-toolops-count{min-width:67px;padding:5px}
+ .star-toolops-grid{grid-template-columns:minmax(0,1fr);gap:7px}
+ .star-toolops-card{padding:11px;gap:6px}
+ .star-toolops-ai{padding:9px}
+ .star-toolops-ai>div:not(.star-toolops-ai-answer){flex-wrap:wrap}
+ .star-toolops-ai>div input{flex:1 1 100%}
+ .star-toolops-ai button{flex:1}
+}
