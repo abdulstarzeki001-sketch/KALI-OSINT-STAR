@@ -12,9 +12,9 @@ type ProbeResult={
  outcome:string;note:string;
 };
 type Catalog={source:string;checkedAt:string;tools:ToolStatus[];history:ProbeResult[];notice:string};
-type InstallPlan={policy:string;method:string;target?:string;readiness?:string;requirements?:string[];package:string|null;command:string|null;compatibility:string;requiresApproval:boolean;executed:boolean;installedByManager:boolean};
+type InstallPlan={policy:string;method:string;target?:string;readiness?:string;requirements?:string[];canInstall?:boolean;blockedReason?:string|null;package:string|null;command:string|null;compatibility:string;requiresApproval:boolean;executed:boolean;installedByManager:boolean};
 type InstallJob={tool_id:string;status:'running'|'interrupted'|'succeeded'|'failed'|'timed_out';startedAt:string|null;finishedAt:string|null;exitCode:number|null;output:string};
-type InstallCatalog={tools:Array<ToolStatus & {install:InstallPlan}>;summary:{total:number;installed:number;missing:number;automatedInstallsEnabled:boolean;approvedTools?:string[]};jobs?:Record<string,InstallJob>;busy?:boolean;persistence:{homePersisted:boolean;initialized:boolean;restoration:string}};
+type InstallCatalog={pythonVersion?:string|null;tools:Array<ToolStatus & {install:InstallPlan}>;summary:{total:number;installed:number;missing:number;automatedInstallsEnabled:boolean;approvedTools?:string[]};jobs?:Record<string,InstallJob>;busy?:boolean;persistence:{homePersisted:boolean;initialized:boolean;restoration:string}};
 type ResultResponse={result:ProbeResult;plan?:{tool_id:string;action:string};
   explanation?:string|null;aiSource?:string;};
 type Props={tools:LibraryTool[];favorites:string[];onToggleFavorite:(name:string)=>void;
@@ -71,6 +71,7 @@ const issues:Record<string,string>={
  INSTALL_BUSY:'يوجد تثبيت آخر جارٍ.',
  INSTALL_RATE_LIMIT:'طلب تثبيت متكرر بسرعة.',
  INSTALL_START_FAILED:'تعذّر بدء عملية التثبيت.',
+ INSTALL_PYTHON_VERSION_UNSUPPORTED:'Certipy 5.1.0 يتطلب Python 3.12 أو أحدث؛ إصدار Python الموجود على Railway غير متوافق.',
  INSTALL_APT_NOT_READY:'مثبّت AFL++ المعتمد غير متاح.',
  INSTALL_APT_SCRIPT_UNTRUSTED:'ملف تثبيت AFL++ لا يملكه root أو غير موثوق.',
  INSTALL_ROOT_DISK_SPACE_LOW:'قرص نظام Railway لا يملك 750 MiB متاحة للتثبيت.',
@@ -153,7 +154,10 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
  }
  async function installTool(toolId:string,name:string){
   if(busy||installBusy||installCatalog?.busy)return;
-  if(!window.confirm('هل توافق على تثبيت '+name+' في Python venv داخل Railway؟ سيتم تنزيل الحزم من PyPI وستُستهلك مساحة القرص الدائم.'))return;
+  const plan=installCatalog?.tools.find(x=>x.id===toolId)?.install;
+  if(plan?.canInstall===false){setError(issues[plan.blockedReason||'']||'بيئة التثبيت غير متوافقة مع متطلبات الأداة.');return;}
+  const detail=toolId==='aflpp'?'من حزم Debian الموقّعة باستخدام APT، مع حفظ سجل الحزمة. قد يحتاج مساحة كبيرة من قرص النظام.':'داخل Python venv باستخدام PyPI، مع حفظ ملفات الأداة على وحدة التخزين الدائمة.';
+  if(!window.confirm('هل توافق على تثبيت '+name+' على Railway؟ سيتم التثبيت '+detail))return;
   setInstallBusy(toolId);setError('');
   try{
    await api<{job:InstallJob}>('install/execute',{tool_id:toolId,approval:'I_APPROVE_RAILWAY_TOOL_INSTALL'});
@@ -193,12 +197,12 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
       {st?.executable&&<code dir="ltr">{st.executable}</code>}
     </div>
     <details className="star-toolops-guide"><summary>حالة وخطة التثبيت</summary>
-      {install?<><p>{install.compatibility}</p><p><strong>بيئة التشغيل:</strong> {targetLabels[install.target||'']||install.target||'غير محددة'}</p><p><strong>الجاهزية:</strong> {readinessLabels[install.readiness||'']||install.readiness||'مراجعة'}</p>{Array.isArray(install.requirements)&&install.requirements.length>0&&<ul>{install.requirements.map((req,index)=><li key={index}>{req}</li>)}</ul>}<p>السياسة: {install.policy==='owner_one_click'?'تثبيت بضغطة واحدة بعد موافقة المالك':install.policy==='owner_terminal_approval'?'تثبيت يدوي بموافقة المالك':install.policy==='manual_review'?'مراجعة يدوية': 'مختبر منفصل'}</p>{install.command&&<div className="star-toolops-command"><code dir="ltr">{install.command}</code><button type="button" onClick={()=>void copy(install.command!)}>نسخ</button></div>}<small>الأوامر مرجعية. التثبيت المباشر لا يُنفّذ إلا بعد موافقتك، وللأدوات المعتمدة فقط.</small></>:<p>خطة التثبيت غير متاحة من البوابة حالياً.</p>}
-      {install?.policy==='owner_one_click'&&!st?.installed&&<button type="button" disabled={!!installBusy||!!busy||!!installCatalog?.busy||job?.status==='running'} onClick={()=>void installTool(id,tool.name)}>
-        {installBusy===id?'جارٍ إرسال الطلب...':job?.status==='running'?'التثبيت جارٍ...':'تثبيت مباشر بموافقتي'}
+      {install?<><p>{install.compatibility}</p><p><strong>بيئة التشغيل:</strong> {targetLabels[install.target||'']||install.target||'غير محددة'}</p><p><strong>الجاهزية:</strong> {readinessLabels[install.readiness||'']||install.readiness||'مراجعة'}</p>{Array.isArray(install.requirements)&&install.requirements.length>0&&<ul>{install.requirements.map((req,index)=><li key={index}>{req}</li>)}</ul>}<p>السياسة: {install.policy==='owner_one_click'?'تثبيت بضغطة واحدة بعد موافقة المالك':install.policy==='owner_terminal_approval'?'تثبيت يدوي بموافقة المالك':install.policy==='manual_review'?'مراجعة يدوية': 'مختبر منفصل'}</p>{install.command&&<div className="star-toolops-command"><code dir="ltr">{install.command}</code><button type="button" onClick={()=>void copy(install.command!)}>نسخ</button></div>}<small>الأوامر مرجعية. التثبيت المباشر لا يُنفّذ إلا بعد موافقتك، وللأدوات المعتمدة فقط.</small>{install.blockedReason==='INSTALL_PYTHON_VERSION_UNSUPPORTED'&&<p role="status">Certipy 5.1.0 غير متوافق حالياً: Python المكتشف {installCatalog?.pythonVersion||'غير معروف'}؛ المطلوب 3.12 أو أحدث. لن يُشغَّل التثبيت قبل تصحيح بيئة Python.</p>}</>:<p>خطة التثبيت غير متاحة من البوابة حالياً.</p>}
+      {install?.policy==='owner_one_click'&&!st?.installed&&<button type="button" disabled={!!installBusy||!!busy||!!installCatalog?.busy||job?.status==='running'||install.canInstall===false} onClick={()=>void installTool(id,tool.name)}>
+        {installBusy===id?'جارٍ إرسال الطلب...':job?.status==='running'?'التثبيت جارٍ...':install.canInstall===false?'غير متوافق مع Python الحالي':'تثبيت مباشر بموافقتي'}
        </button>}
       {job&&<div className="star-toolops-result" role="status">
-        <strong>{job.status==='succeeded'?'اكتمل التثبيت بنجاح':job.status==='running'?'جارٍ تنزيل وتثبيت الأداة':job.status==='timed_out'?'انتهت مهلة التثبيت':job.status==='interrupted'?'توقف التثبيت بعد إعادة تشغيل الخادم':'فشل التثبيت؛ راجع السجل'}</strong>
+        <strong>{job.status==='succeeded'?(st?.installed?'اكتمل التثبيت وتم اكتشاف الأداة':'سجل التثبيت ناجح، لكن الأداة غير مكتشفة حالياً؛ افحص حالتها'):job.status==='running'?'جارٍ تنزيل وتثبيت الأداة':job.status==='timed_out'?'انتهت مهلة التثبيت':job.status==='interrupted'?'توقف التثبيت بعد إعادة تشغيل الخادم':'فشل التثبيت؛ راجع السجل'}</strong>
         {job.output&&<pre dir="ltr">{job.output.slice(-1600)}</pre>}
        </div>}
     </details>
