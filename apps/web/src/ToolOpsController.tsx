@@ -1,0 +1,165 @@
+import {useCallback,useEffect,useMemo,useState} from 'react';
+import './tool-ops.css';
+
+type LibraryTool={name:string;group:string;desc:string;repo:string;command:string};
+type ToolStatus={
+ id:string;name:string;group:string;installed:boolean;executable:string|null;
+ versionAllowed:boolean;actions:string[];guide:string;mode:string;
+};
+type ProbeResult={
+ tool_id:string;action:string;at:string;installed:boolean;executable:string|null;
+ executed:boolean;exitCode:number|null;elapsedMs:number;stdout:string;stderr:string;
+ outcome:string;note:string;
+};
+type Catalog={source:string;checkedAt:string;tools:ToolStatus[];history:ProbeResult[];notice:string};
+type ResultResponse={result:ProbeResult;plan?:{tool_id:string;action:string};
+  explanation?:string|null;aiSource?:string;};
+type Props={tools:LibraryTool[];favorites:string[];onToggleFavorite:(name:string)=>void;
+ onDetails:(tool:LibraryTool)=>void;onOpenTerminal:()=>void;};
+const BASE='/api/terminal/tools';
+const ids:Record<string,string>={
+ 'Mythic C2':'mythic','Sliver C2':'sliver','Havoc':'havoc','MITRE CALDERA':'caldera',
+ 'BloodHound CE':'bloodhound','Certipy':'certipy','Impacket':'impacket',
+ 'NetExec':'netexec','Rubeus':'rubeus','Mimikatz':'mimikatz',
+ 'Ligolo-ng':'ligolo','Frida':'frida','Ghidra':'ghidra','AFL++':'aflpp','Syzkaller':'syzkaller'};
+const issues:Record<string,string>={
+ ACCESS_REQUIRED:'سجّل دخولك عبر Cloudflare Access أولاً.',
+ TOOLS_EDGE_UNAVAILABLE:'رابط Railway الآمن غير جاهز.',
+ TOOLS_UPSTREAM_UNAVAILABLE:'محرك الأدوات في Railway غير متاح.',
+ TOOLS_CATALOG_UNAVAILABLE:'تعذّر قراءة حالة الأدوات.',
+ TOOLS_EXECUTION_UNAVAILABLE:'تعذّر تنفيذ فحص الأداة.',
+ TOOLS_ASSISTANT_UNAVAILABLE:'تعذّر تشغيل مساعد الأدوات.',
+ TOOLS_ACTION_NOT_ALLOWED:'هذا البرنامج لا يسمح بالتنفيذ الآلي؛ فحص التثبيت فقط.',
+ TOOLS_REQUIRES_AUTHORIZED_LAB:'هذا الطلب يتطلب مختبراً مصرحاً به واعتماداً صريحاً، ولم يُنفذ أي أمر.',
+ TOOLS_NAME_REQUIRED:'اذكر اسم أداة واحدة من المكتبة في طلبك.',
+ TOOLS_AMBIGUOUS:'اذكر أداة واحدة فقط في كل طلب.',
+ TOOLS_RATE_LIMIT:'طلب متكرر بسرعة؛ كرر بعد لحظة.',
+ TOOLS_BUSY:'يوجد فحص قيد التنفيذ. حاول بعد انتهائه.',
+ TOOLS_INVALID_ACTION:'الفعل المطلوب ليس ضمن الإجراءات المسموحة.',
+ TOOLS_INVALID_PROMPT:'أدخل طلباً من 1 إلى 400 حرف.',
+ TOOLS_BAD_JSON:'الطلب غير صالح.',
+ TOOLS_INPUT_TOO_LARGE:'الطلب أكبر من الحد المسموح.',
+ TERMINAL_BRIDGE_UNAVAILABLE:'تعذّر الاتصال بالخدمة المحمية.'
+};
+async function api<T>(route:string,body:unknown={}):Promise<T>{
+ const response=await fetch(BASE+'/'+route,{method:'POST',credentials:'same-origin',cache:'no-store',
+  headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body)});
+ const type=response.headers.get('content-type')||'';
+ if(!type.includes('application/json'))throw Error('انتهت جلسة Cloudflare أو لم تُرجع البوابة JSON.');
+ const data:unknown=await response.json();
+ if(!data||typeof data!=='object')throw Error('بيانات الخادم غير صالحة');
+ if(!response.ok){
+  const code=String((data as Record<string,unknown>).code||'TOOLS_EXECUTION_UNAVAILABLE');
+  throw Error(issues[code]||code+' — HTTP '+response.status);
+ }
+ return data as T;
+}
+function outcomeText(x:ProbeResult):string{
+ if(x.outcome==='not_installed')return 'غير مثبت في حاوية Railway';
+ if(x.outcome==='found')return 'عُثر على ملف الأداة. لم تُشغّل.';
+ if(x.outcome==='completed')return 'اكتمل فحص الإصدار على Linux';
+ if(x.outcome==='timeout')return 'انتهت مهلة فحص الإصدار';
+ return 'فشل فحص الإصدار؛ راجع المخرجات';
+}
+export default function ToolOpsController({tools,favorites,onToggleFavorite,onDetails,onOpenTerminal}:Props){
+ const [catalog,setCatalog]=useState<Catalog|null>(null);
+ const [results,setResults]=useState<Record<string,ProbeResult>>({});
+ const [loading,setLoading]=useState(true);
+ const [busy,setBusy]=useState('');
+ const [error,setError]=useState('');
+ const [prompt,setPrompt]=useState('');
+ const [aiAnswer,setAiAnswer]=useState('');
+ const [aiMode,setAiMode]=useState('');
+ const refresh=useCallback(async()=>{
+  setLoading(true);setError('');
+  try{
+   const c=await api<Catalog>('catalog');
+   if(!Array.isArray(c.tools)||c.tools.length!==15)throw Error('بيانات جرد الأدوات غير مكتملة.');
+   setCatalog(c);
+   setResults(prev=>{
+     const byId={...prev};
+     for(const item of c.history||[])if(!byId[item.tool_id])byId[item.tool_id]=item;
+     return byId;
+   });
+  }catch(e){setError(e instanceof Error?e.message:'خطأ قراءة الأدوات');}
+  finally{setLoading(false);}
+ },[]);
+ useEffect(()=>{void refresh();},[refresh]);
+ const statuses=useMemo(()=>new Map(catalog?.tools.map(x=>[x.id,x])||[]),[catalog]);
+ async function run(tool:string,action:'inspect'|'version'){
+  if(busy)return;
+  setBusy(tool);setError('');setAiAnswer('');
+  try{
+   const response=await api<ResultResponse>('run',{tool_id:tool,action});
+   setResults(prev=>({...prev,[tool]:response.result}));
+   void refresh();
+  }catch(e){setError(e instanceof Error?e.message:'فشل الفحص');}
+  finally{setBusy('');}
+ }
+ async function useAssistant(){
+  if(!prompt.trim()||prompt.length>400||busy)return;
+  setBusy('assistant');setError('');setAiAnswer('');setAiMode('');
+  try{
+   const r=await api<ResultResponse>('assistant',{prompt:prompt.trim()});
+   if(r.result?.tool_id)setResults(prev=>({...prev,[r.result.tool_id]:r.result}));
+   setAiMode(r.aiSource||'rules');
+   setAiAnswer(r.explanation?.trim()||(
+    'تم توجيه الطلب إلى فحص محلي محدد فقط. '+(r.result?outcomeText(r.result):'')+
+    ' لم تُرسل أوامر غير محددة إلى Bash.'));
+   void refresh();
+  }catch(e){setError(e instanceof Error?e.message:'فشل التوجيه');}
+  finally{setBusy('');}
+ }
+ async function copy(text:string){try{await navigator.clipboard.writeText(text);}catch{setError('تعذر النسخ من هذا المتصفح');}}
+ const installedCount=catalog?.tools.filter(x=>x.installed).length??null;
+ return <section className="star-toolops" aria-label="مركز أدوات Linux الحقيقي">
+  <div className="star-toolops-head">
+   <div><span className="eyebrow">LIVE RAILWAY TOOL INVENTORY</span><h2>فحص وتشغيل الأدوات داخل Railway</h2>
+    <p>الفحص يعرض ما هو مثبت فعلياً، وليس ما هو مدرج فقط. التشغيل الآلي الحالي يقتصر على جرد الملفات وبعض أوامر الإصدار المحلية الثابتة. جميع النتائج من الحاوية وليست محاكاة.</p></div>
+   <div className="star-toolops-count"><strong>{installedCount===null?'—':installedCount+'/15'}</strong><span>مكتشفة فعلياً</span></div>
+  </div>
+  <div className="star-toolops-actions"><button type="button" disabled={loading||!!busy} onClick={()=>void refresh()}>{loading?'جارٍ الفحص...':'↻ فحص تثبيت الجميع'}</button>
+    <button type="button" onClick={onOpenTerminal}>▣ الترمنال</button>
+    {catalog&&<small>آخر جرد: {new Date(catalog.checkedAt).toLocaleString('ar-IQ')}</small>}
+  </div>
+  <form className="star-toolops-ai" onSubmit={e=>{e.preventDefault();void useAssistant();}}>
+    <label htmlFor="star-toolops-prompt"><strong>STAR AI — اطلب استخدام أداة</strong><small>مثال: «افحص Frida» أو «اعرض إصدار NetExec». لا تُشغّل استغلالات أو خوادم C2 تلقائياً.</small></label>
+    <div><input id="star-toolops-prompt" value={prompt} onChange={e=>setPrompt(e.target.value)}
+     maxLength={400} placeholder="قل: افحص أداة Frida داخل Railway" dir="auto" autoComplete="off" />
+      <button className="primary" type="submit" disabled={!prompt.trim()||!!busy}>{busy==='assistant'?'جارٍ الفحص...':'نفّذ الطلب الآمن'}</button></div>
+    {aiAnswer&&<div role="status" className="star-toolops-ai-answer"><strong>{aiMode==='gateway'?'تحليل STAR AI':'نتيجة التوجيه الآمن'}</strong><p>{aiAnswer}</p>{aiMode==='gateway_unavailable'&&<small>المزوّد غير متاح؛ الفحص المحلي اكتمل ولكن دون تحليل AI.</small>}</div>}
+  </form>
+  {error&&<div className="star-toolops-error" role="alert">{error}</div>}
+  <div className="tools-grid page-animate star-toolops-grid">{tools.map((tool,i)=>{
+   const id=ids[tool.name];const st=statuses.get(id);const result=results[id];
+   return <article className="tool-card star-toolops-card" key={tool.name}>
+    <div className="tool-top"><span className="tool-index">{String(i+1).padStart(2,'0')}</span>
+     <button title="المفضلة" className={'star '+(favorites.includes(tool.name)?'on':'')}
+       onClick={()=>onToggleFavorite(tool.name)} type="button">★</button></div>
+    <h3>{tool.name}</h3><span className="pill">{tool.group}</span><p>{tool.desc}</p>
+    <div className={'star-toolops-state '+(!st?'unknown':st.installed?'installed':'missing')}>
+      <span>{!st?'○ لم يُفحص':st.installed?'● مثبت في Railway':'○ غير مثبت في Railway'}</span>
+      {st?.executable&&<code dir="ltr">{st.executable}</code>}
+    </div>
+    <details className="star-toolops-guide"><summary>المميزات وطريقة التشغيل</summary>
+      <p>{st?.guide||'اعرض حالة التثبيت أولاً. تشغيل الأدوات المتقدمة يحتاج مختبراً مخصصاً.'}</p>
+      <div className="star-toolops-command"><code dir="ltr">{tool.command}</code>
+       <button type="button" onClick={()=>void copy(tool.command)}>نسخ</button></div>
+      <small>الأمر مرجعي فقط. تشغيل الأدوات عالية التأثير يحتاج بيئة مفوضة وتجهيزاتها الخاصة.</small>
+    </details>
+    <div className="star-toolops-buttons">
+      <button type="button" disabled={!!busy||!catalog} onClick={()=>void run(id,'inspect')}>{busy===id?'جارٍ التنفيذ':'فحص حقيقي'}</button>
+      <button type="button" disabled={!!busy||!st?.versionAllowed} onClick={()=>void run(id,'version')}>إصدار</button>
+      <button type="button" onClick={()=>onDetails(tool)}>تفاصيل</button>
+    </div>
+    {result&&<div className="star-toolops-result" aria-live="polite">
+      <strong>{outcomeText(result)}</strong>
+      <small>{result.at?new Date(result.at).toLocaleString('ar-IQ'):''} · {result.executed?'برنامج شُغّل':'جرد فقط'}{result.exitCode!==null?' · exit '+result.exitCode:''}</small>
+      {(result.stdout||result.stderr)&&<pre dir="ltr">{(result.stdout||result.stderr).slice(0,2200)}</pre>}
+    </div>}
+    <div className="tool-actions"><button type="button" onClick={onOpenTerminal}>فتح الترمنال</button>
+     <a href={tool.repo} target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>
+   </article>;
+  })}</div>
+ </section>;
+}
