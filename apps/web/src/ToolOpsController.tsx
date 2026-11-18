@@ -130,7 +130,7 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
   }catch(e){setError(e instanceof Error?e.message:'فشل التوجيه');}
   finally{setBusy('');}
  }
- async function install(toolId:string,name:string){
+ async function installTool(toolId:string,name:string){
   if(busy||installBusy||installCatalog?.busy)return;
   if(!window.confirm('هل توافق على تثبيت '+name+' في Python venv داخل Railway؟ سيتم تنزيل الحزم من PyPI وستُستهلك مساحة القرص الدائم.'))return;
   setInstallBusy(toolId);setError('');
@@ -173,7 +173,7 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
     </div>
     <details className="star-toolops-guide"><summary>حالة وخطة التثبيت</summary>
       {install?<><p>{install.compatibility}</p><p>السياسة: {install.policy==='owner_one_click'?'تثبيت بضغطة واحدة بعد موافقة المالك':install.policy==='owner_terminal_approval'?'تثبيت يدوي بموافقة المالك':install.policy==='manual_review'?'مراجعة يدوية': 'مختبر منفصل'}</p>{install.command&&<div className="star-toolops-command"><code dir="ltr">{install.command}</code><button type="button" onClick={()=>void copy(install.command!)}>نسخ</button></div>}<small>الأوامر مرجعية. التثبيت المباشر لا يُنفّذ إلا بعد موافقتك، وللأدوات المعتمدة فقط.</small></>:<p>خطة التثبيت غير متاحة من البوابة حالياً.</p>}
-      {install?.policy==='owner_one_click'&&!st?.installed&&<button type="button" disabled={!!installBusy||!!busy||!!installCatalog?.busy||job?.status==='running'} onClick={()=>void install(id,tool.name)}>
+      {install?.policy==='owner_one_click'&&!st?.installed&&<button type="button" disabled={!!installBusy||!!busy||!!installCatalog?.busy||job?.status==='running'} onClick={()=>void installTool(id,tool.name)}>
         {installBusy===id?'جارٍ إرسال الطلب...':job?.status==='running'?'التثبيت جارٍ...':'تثبيت مباشر بموافقتي'}
        </button>}
       {job&&<div className="star-toolops-result" role="status">
