@@ -91,10 +91,8 @@ export default function ToolsMaintenancePanel({onInstalled}:{onInstalled:()=>voi
   const timer=window.setInterval(()=>{
    void post<Installer>('install/status')
      .then(next=>{
-       setManager(prev=>{
-        if(prev?.job?.status==='running'&&next.job?.status==='verified')onInstalled();
-        return next;
-       });
+       setManager(next);
+       if(next.job?.status==='verified')onInstalled();
      }).catch(()=>{setProblem('تعذر متابعة عملية التثبيت؛ اضغط «تحديث الحالة».');});
   },5000);
   return()=>window.clearInterval(timer);
