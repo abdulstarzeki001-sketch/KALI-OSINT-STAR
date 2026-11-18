@@ -21,6 +21,7 @@ jobs:
       - run: npm run test:cloudflare
       - run: npm run test:markdown
       - run: npm run test:ai-core
+      - run: npm run test:terminal
       - run: npm run typecheck
       - run: npm run build
       - run: npm run test:bundle
