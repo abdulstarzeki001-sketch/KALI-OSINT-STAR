@@ -1,5 +1,6 @@
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import './tool-ops.css';
+import ToolsMaintenancePanel from './ToolsMaintenancePanel';
 
 type LibraryTool={name:string;group:string;desc:string;repo:string;command:string};
 type ToolStatus={
@@ -113,6 +114,7 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
  async function copy(text:string){try{await navigator.clipboard.writeText(text);}catch{setError('تعذر النسخ من هذا المتصفح');}}
  const installedCount=catalog?.tools.filter(x=>x.installed).length??null;
  return <section className="star-toolops" aria-label="مركز أدوات Linux الحقيقي">
+  <ToolsMaintenancePanel onInstalled={refresh}/>
   <div className="star-toolops-head">
    <div><span className="eyebrow">LIVE RAILWAY TOOL INVENTORY</span><h2>فحص وتشغيل الأدوات داخل Railway</h2>
     <p>الفحص يعرض ما هو مثبت فعلياً، وليس ما هو مدرج فقط. التشغيل الآلي الحالي يقتصر على جرد الملفات وبعض أوامر الإصدار المحلية الثابتة. جميع النتائج من الحاوية وليست محاكاة.</p></div>
