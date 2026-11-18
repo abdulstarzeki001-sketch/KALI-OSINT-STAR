@@ -12,7 +12,9 @@ const ROUTES={
   session:{method:'POST',upstream:'session'},
   diagnose:{method:'POST',upstream:'diagnose'},
   ws:{method:'GET',upstream:'ws'},
-  'backup/latest':{method:'POST',upstream:'backup/latest'}
+  'backup/latest':{method:'POST',upstream:'backup/latest'},
+  'training/status':{method:'POST',upstream:'training/status'},
+  'training/verify':{method:'POST',upstream:'training/verify'}
 };
 
 function json(code,status){
@@ -51,12 +53,27 @@ export async function handleTerminalFunction(context,route) {
    headers.set('Upgrade','websocket');
    headers.set('Sec-WebSocket-Protocol',proto);
  }
- const target=WORKER_ORIGIN+'/api/integrations/kali/terminal/'+spec.upstream;
+ let trainingBody=null;
+ if(route==='training/verify'){
+   const declared=Number(request.headers.get('Content-Length')||0);
+   if(declared>2048)return json('TRAINING_INPUT_TOO_LARGE',413);
+   trainingBody=await request.text();
+   if(new TextEncoder().encode(trainingBody).byteLength>2048)
+     return json('TRAINING_INPUT_TOO_LARGE',413);
+   try{
+     const parsed=JSON.parse(trainingBody);
+     if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))
+       return json('TRAINING_BAD_JSON',400);
+   }catch(_){return json('TRAINING_BAD_JSON',400);}
+   headers.set('Content-Type','application/json');
+ }
+  const target=WORKER_ORIGIN+'/api/integrations/kali/terminal/'+spec.upstream;
  let upstream;
  try {
    upstream=await binding.fetch(new Request(target,{
      method:request.method,
      headers,
+     body:trainingBody,
      redirect:'manual'
    }));
  } catch(_) {return json('TERMINAL_BRIDGE_UNAVAILABLE',503);}
