@@ -14,7 +14,10 @@ const ROUTES={
   ws:{method:'GET',upstream:'ws'},
   'backup/latest':{method:'POST',upstream:'backup/latest'},
   'training/status':{method:'POST',upstream:'training/status'},
-  'training/verify':{method:'POST',upstream:'training/verify'}
+  'training/verify':{method:'POST',upstream:'training/verify'},
+  'tools/catalog':{method:'POST',upstream:'tools/catalog'},
+  'tools/run':{method:'POST',upstream:'tools/run'},
+  'tools/assistant':{method:'POST',upstream:'tools/assistant'}
 };
 
 function json(code,status){
@@ -65,6 +68,26 @@ export async function handleTerminalFunction(context,route) {
      if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))
        return json('TRAINING_BAD_JSON',400);
    }catch(_){return json('TRAINING_BAD_JSON',400);}
+   headers.set('Content-Type','application/json');
+ }
+ if(route==='tools/run'||route==='tools/assistant'){
+   const declared=Number(request.headers.get('Content-Length')||0);
+   if(declared>2048)return json('TOOLS_INPUT_TOO_LARGE',413);
+   trainingBody=await request.text();
+   if(new TextEncoder().encode(trainingBody).length>2048)return json('TOOLS_INPUT_TOO_LARGE',413);
+   try{
+     const parsed=JSON.parse(trainingBody);
+     if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return json('TOOLS_BAD_JSON',400);
+     if(route==='tools/run' &&
+        (typeof parsed.tool_id!=='string'||!/^[-a-z0-9]{2,32}$/.test(parsed.tool_id)||
+         !['inspect','version'].includes(parsed.action)||
+         Object.keys(parsed).some(k=>!['tool_id','action'].includes(k))))
+       return json('TOOLS_INVALID_ACTION',400);
+     if(route==='tools/assistant' &&
+        (typeof parsed.prompt!=='string'||!parsed.prompt.trim()||parsed.prompt.length>400||
+         Object.keys(parsed).some(k=>k!=='prompt')))
+       return json('TOOLS_INVALID_PROMPT',400);
+   }catch(_){return json('TOOLS_BAD_JSON',400);}
    headers.set('Content-Type','application/json');
  }
   const target=WORKER_ORIGIN+'/api/integrations/kali/terminal/'+spec.upstream;
