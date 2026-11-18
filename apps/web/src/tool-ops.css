@@ -54,3 +54,21 @@
  .star-toolops-ai>div input{flex:1 1 100%}
  .star-toolops-ai button{flex:1}
 }
+
+/* Mobile library: reduce tall card whitespace and preserve readable tap targets. */
+@media(max-width:760px){
+ .star-toolops-grid{gap:8px}
+ .star-toolops-card{padding:10px 11px;gap:5px}
+ .star-toolops-card>.tool-top{align-items:center}
+ .star-toolops-card h3{margin:1px 0 0}
+ .star-toolops-card>p{flex:0 0 auto;margin:0;line-height:1.45}
+ .star-toolops-card .pill{margin:0}
+ .star-toolops-state{padding:7px 8px;min-height:35px;justify-content:space-between}
+ .star-toolops-guide{padding:3px 0}
+ .star-toolops-guide summary{min-height:36px;display:flex;align-items:center;line-height:1.4}
+ .star-toolops-buttons{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+ .star-toolops-buttons button{min-width:0;min-height:42px;padding:7px 4px;font-size:11px}
+ .star-toolops-card .tool-actions{margin-top:0;padding-top:9px}
+ .star-toolops-count span{display:block;max-width:190px;line-height:1.4}
+ .star-toolops-command button{background:#123a32;color:#cbf9e9;min-height:30px}
+}

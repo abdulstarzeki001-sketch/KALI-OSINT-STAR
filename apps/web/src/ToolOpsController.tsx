@@ -170,8 +170,8 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
  return <section className="star-toolops" aria-label="مركز أدوات Linux الحقيقي">
   <div className="star-toolops-head">
    <div><span className="eyebrow">LIVE RAILWAY TOOL INVENTORY</span><h2>فحص وتشغيل الأدوات داخل Railway</h2>
-    <p>الفحص يعرض ما هو مثبت فعلياً، وليس ما هو مدرج فقط. التشغيل الآلي الحالي يقتصر على جرد الملفات وبعض أوامر الإصدار المحلية الثابتة. جميع النتائج من الحاوية وليست محاكاة.</p></div>
-   <div className="star-toolops-count"><strong>{installedCount===null?'—':installedCount+'/15'}</strong><span>مكتشفة فعلياً من أصل 15 · التثبيت التلقائي المصرّح به: {installCatalog?.summary?.approvedTools?.length??'—'} أدوات</span></div>
+    <p>هذه قائمة 15 أداة. يظهر الجرد ما هو مثبت فعلياً على Railway؛ أما بقية الأدوات فتحتاج تثبيتاً بموافقتك أو بيئة مختبر منفصلة.</p></div>
+   <div className="star-toolops-count"><strong>{installedCount===null?'—':installedCount+'/15'}</strong><span>مثبتة فعلياً من أصل 15. {installCatalog?.summary?.approvedTools?.length??'—'} خيارات تثبيت بموافقتك، وليست أدوات مثبتة</span></div>
   </div>
   <div className="star-toolops-actions"><button type="button" disabled={loading||!!busy} onClick={()=>void refresh()}>{loading?'جارٍ الفحص...':'↻ فحص تثبيت الجميع'}</button>
     <button type="button" onClick={onOpenTerminal}>▣ الترمنال</button>
@@ -193,7 +193,7 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
        onClick={()=>onToggleFavorite(tool.name)} type="button">★</button></div>
     <h3>{tool.name}</h3><span className="pill">{tool.group}</span><p>{tool.desc}</p>
     <div className={'star-toolops-state '+(!st?'unknown':st.installed?'installed':'missing')}>
-      <span>{!st?'○ لم يُفحص':st.installed?'● مثبت في Railway':'○ غير مثبت في Railway'}</span>
+      <span>{!st?'○ لم يُفحص':st.installed?'● مثبت في Railway':install?.policy==='owner_one_click'?'○ غير مثبت — يمكن تثبيتها بموافقتك':install?.policy==='manual_review'?'○ غير مثبت — يحتاج مراجعة يدوية':'○ غير مثبت — يحتاج بيئة منفصلة'}</span>
       {st?.executable&&<code dir="ltr">{st.executable}</code>}
     </div>
     <details className="star-toolops-guide"><summary>حالة وخطة التثبيت</summary>
@@ -213,7 +213,7 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
       <small>الأمر مرجعي فقط. تشغيل الأدوات عالية التأثير يحتاج بيئة مفوضة وتجهيزاتها الخاصة.</small>
     </details>
     <div className="star-toolops-buttons">
-      <button type="button" disabled={!!busy||!catalog} onClick={()=>void run(id,'inspect')}>{busy===id?'جارٍ التنفيذ':'فحص حقيقي'}</button>
+      <button type="button" disabled={!!busy||!catalog} onClick={()=>void run(id,'inspect')}>{busy===id?'جارٍ الفحص':'تحقق من التثبيت'}</button>
       <button type="button" disabled={!!busy||!st?.versionAllowed} onClick={()=>void run(id,'version')}>إصدار</button>
       <button type="button" onClick={()=>onDetails(tool)}>تفاصيل</button>
     </div>
