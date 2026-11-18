@@ -167,7 +167,7 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
   <div className="star-toolops-head">
    <div><span className="eyebrow">LIVE RAILWAY TOOL INVENTORY</span><h2>فحص وتشغيل الأدوات داخل Railway</h2>
     <p>الفحص يعرض ما هو مثبت فعلياً، وليس ما هو مدرج فقط. التشغيل الآلي الحالي يقتصر على جرد الملفات وبعض أوامر الإصدار المحلية الثابتة. جميع النتائج من الحاوية وليست محاكاة.</p></div>
-   <div className="star-toolops-count"><strong>{installedCount===null?'—':installedCount+'/15'}</strong><span>مكتشفة فعلياً من أصل 15 · التثبيت التلقائي المصرّح به: {installCatalog?.summary?.approvedTools?.length??4} أدوات</span></div>
+   <div className="star-toolops-count"><strong>{installedCount===null?'—':installedCount+'/15'}</strong><span>مكتشفة فعلياً من أصل 15 · التثبيت التلقائي المصرّح به: {installCatalog?.summary?.approvedTools?.length??'—'} أدوات</span></div>
   </div>
   <div className="star-toolops-actions"><button type="button" disabled={loading||!!busy} onClick={()=>void refresh()}>{loading?'جارٍ الفحص...':'↻ فحص تثبيت الجميع'}</button>
     <button type="button" onClick={onOpenTerminal}>▣ الترمنال</button>
