@@ -220,3 +220,19 @@ test('installation inventory is owner-guarded and forwarded as read-only JSON',a
  assert.equal(called.headers.get('X-Kali-Terminal-Bridge'),secret);
  assert.equal(response.headers.get('X-Kali-Terminal-Bridge'),null);
 });
+
+test('Pages approved installer endpoint is Access gated, fixed payload only',async()=>{
+ let calls=0,submitted=null;
+ const fetcher=async req=>{calls++;submitted=req;return new Response('{"job":{"status":"running"}}',{status:202});};
+ const unauth=await handleTerminalFunction(context(request('tools/install/execute'),fetcher),'tools/install/execute');
+ assert.equal(unauth.status,401);assert.equal(calls,0);
+ const good=new Request(origin+'/api/terminal/tools/install/execute',{method:'POST',headers:{...jwt,'Content-Type':'application/json'},body:JSON.stringify({tool_id:'frida',approval:'I_APPROVE_RAILWAY_TOOL_INSTALL'})});
+ const res=await handleTerminalFunction(context(good,fetcher),'tools/install/execute');
+ assert.equal(res.status,202);
+ assert.equal(calls,1);
+ assert.match(submitted.url,/\/tools\/install\/execute$/);
+ assert.equal(submitted.headers.get('X-Kali-Terminal-Bridge'),secret);
+ const bad=new Request(origin+'/api/terminal/tools/install/execute',{method:'POST',headers:{...jwt,'Content-Type':'application/json'},body:JSON.stringify({tool_id:'mythic',approval:'I_APPROVE_RAILWAY_TOOL_INSTALL'})});
+ assert.equal((await handleTerminalFunction(context(bad,fetcher),'tools/install/execute')).status,400);
+ assert.equal(calls,1);
+});
