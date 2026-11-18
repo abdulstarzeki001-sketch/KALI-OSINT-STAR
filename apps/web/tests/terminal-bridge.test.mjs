@@ -207,3 +207,16 @@ test('Tools page cannot send arbitrary shell commands or bypass owner Access',as
  assert.match(component,/tools\.map/);
  assert.doesNotMatch(component,/innerHTML/);
 });
+
+
+test('installation inventory is owner-guarded and forwarded as read-only JSON',async()=>{
+ let called=null;
+ const fetcher=async req=>{called=req;return new Response(JSON.stringify({tools:[],summary:{total:0}}),{status:200});};
+ const noAuth=await handleTerminalFunction(context(request('tools/install/catalog'),fetcher),'tools/install/catalog');
+ assert.equal(noAuth.status,401);assert.equal(called,null);
+ const response=await handleTerminalFunction(context(request('tools/install/catalog','POST',jwt),fetcher),'tools/install/catalog');
+ assert.equal(response.status,200);
+ assert.match(called.url,/\/api\/integrations\/kali\/terminal\/tools\/install\/catalog$/);
+ assert.equal(called.headers.get('X-Kali-Terminal-Bridge'),secret);
+ assert.equal(response.headers.get('X-Kali-Terminal-Bridge'),null);
+});
