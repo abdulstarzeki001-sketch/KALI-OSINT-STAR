@@ -1,0 +1,50 @@
+name: KALI Terminal Owner Access Monitor
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 5 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/functions/api/terminal/**'
+      - 'apps/web/terminal-bridge.js'
+      - '.github/workflows/terminal-access-monitor.yml'
+permissions:
+  contents: read
+jobs:
+  owner-access:
+    name: Verify anonymous terminal requests are blocked
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify terminal Pages routes enforce Cloudflare Access
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://kali-osint-star.pages.dev"
+          for entry in "GET /" "POST /api/terminal/session" "POST /api/terminal/diagnose" "POST /api/terminal/backup/latest" "GET /api/terminal/ws"; do
+            method="${entry%% *}"
+            path="${entry#* }"
+            code="$(curl --silent --show-error --max-time 20 \
+              -X "$method" \
+              -D /tmp/access-header -o /dev/null \
+              -w '%{http_code}' "$BASE$path")"
+            node - "$method" "$path" "$code" <<'NODE'
+          const fs=require('node:fs');
+          const [method,path,code]=process.argv.slice(2);
+          const headers=fs.readFileSync('/tmp/access-header','utf8');
+          const location=headers.match(/^location:\s*(.+)$/im)?.[1]?.trim()||'';
+          let redirect;
+          try{redirect=new URL(location);}
+          catch{console.error('Missing Access redirect');process.exit(1);}
+          const valid=redirect.hostname.endsWith('.cloudflareaccess.com') ||
+            (redirect.hostname==='kali-osint-star.pages.dev' &&
+             redirect.pathname.startsWith('/cdn-cgi/access/'));
+          console.log(JSON.stringify({method,path,httpStatus:code,accessLogin:valid}));
+          if(code!=='302'||!valid){
+            console.error('Anonymous request was not challenged by Cloudflare Access');
+            process.exit(1);
+          }
+          NODE
+          done
+          echo 'KALI site and terminal API protected for anonymous visitors'
