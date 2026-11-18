@@ -160,3 +160,50 @@ test('training routes reject oversized, cross-origin and invalid JSON submission
    assert.match(readFileSync(new URL('../functions/api/terminal/training/'+name,import.meta.url),'utf8'),/handleTerminalFunction/);
  }
 });
+
+
+test('owner Tools page routes to real Railway via private Pages Service Binding',async()=>{
+ const req=new Request(origin+'/api/terminal/tools/run',{method:'POST',
+  headers:{...jwt,'Content-Type':'application/json'},body:JSON.stringify({tool_id:'frida',action:'inspect'})});
+ let upstream;
+ const fetcher=async request=>{
+  upstream=request;
+  return new Response(JSON.stringify({result:{tool_id:'frida',installed:false,executed:false,outcome:'not_installed'}}));
+ };
+ assert.equal((await handleTerminalFunction(context(request('tools/catalog'),fetcher),'tools/catalog')).status,401);
+ assert.equal((await handleTerminalFunction(context(request('tools/catalog','GET',jwt),fetcher),'tools/catalog')).status,405);
+ assert.equal(upstream,undefined);
+ const response=await handleTerminalFunction(context(req,fetcher),'tools/run');
+ assert.equal(response.status,200);
+ assert.equal((await response.json()).result.outcome,'not_installed');
+ assert.equal(upstream.url,'https://wormstar-ai-lab.abdulstarzeki001.workers.dev/api/integrations/kali/terminal/tools/run');
+ assert.deepEqual(await upstream.json(),{tool_id:'frida',action:'inspect'});
+ assert.equal(upstream.headers.get('X-Kali-Terminal-Bridge'),secret);
+ const assistant=new Request(origin+'/api/terminal/tools/assistant',{method:'POST',headers:jwt,
+  body:JSON.stringify({prompt:'افحص Frida'})});
+ assert.equal((await handleTerminalFunction(context(assistant,fetcher),'tools/assistant')).status,200);
+ assert.equal(upstream.url,'https://wormstar-ai-lab.abdulstarzeki001.workers.dev/api/integrations/kali/terminal/tools/assistant');
+});
+test('Tools page cannot send arbitrary shell commands or bypass owner Access',async()=>{
+ let called=false;
+ const fetcher=async()=>{called=true;return new Response('{}');};
+ const bad=(kind,json,headers=jwt)=>new Request(origin+'/api/terminal/tools/'+kind,{
+  method:'POST',headers,body:JSON.stringify(json)});
+ assert.equal((await handleTerminalFunction(context(bad('run',{tool_id:'netexec',action:'shell'}),fetcher),'tools/run')).status,400);
+ assert.equal((await handleTerminalFunction(context(bad('run',{tool_id:'frida',action:'inspect',target:'8.8.8.8'}),fetcher),'tools/run')).status,400);
+ assert.equal((await handleTerminalFunction(context(bad('assistant',{prompt:'x'.repeat(401)}),fetcher),'tools/assistant')).status,400);
+ assert.equal((await handleTerminalFunction(context(bad('run',{tool_id:'frida',action:'inspect'},{
+  ...jwt,Origin:'https://untrusted.example'}),fetcher),'tools/run')).status,403);
+ assert.equal(called,false);
+ for(const name of ['catalog','run','assistant']){
+  const fn=readFileSync(new URL('../functions/api/terminal/tools/'+name+'.js',import.meta.url),'utf8');
+  assert.match(fn,/handleTerminalFunction/);
+ }
+ const page=readFileSync(new URL('../src/main.tsx',import.meta.url),'utf8');
+ const component=readFileSync(new URL('../src/ToolOpsController.tsx',import.meta.url),'utf8');
+ assert.match(page,/<ToolOpsController tools=\{visible\}/);
+ assert.match(component,/star-toolops-result/);
+ assert.match(component,/\/api\/terminal\/tools/);
+ assert.match(component,/tools\.map/);
+ assert.doesNotMatch(component,/innerHTML/);
+});
