@@ -12,13 +12,31 @@ type ProbeResult={
  outcome:string;note:string;
 };
 type Catalog={source:string;checkedAt:string;tools:ToolStatus[];history:ProbeResult[];notice:string};
-type InstallPlan={policy:string;method:string;package:string|null;command:string|null;compatibility:string;requiresApproval:boolean;executed:boolean;installedByManager:boolean};
+type InstallPlan={policy:string;method:string;target?:string;readiness?:string;requirements?:string[];package:string|null;command:string|null;compatibility:string;requiresApproval:boolean;executed:boolean;installedByManager:boolean};
 type InstallJob={tool_id:string;status:'running'|'interrupted'|'succeeded'|'failed'|'timed_out';startedAt:string|null;finishedAt:string|null;exitCode:number|null;output:string};
-type InstallCatalog={tools:Array<ToolStatus & {install:InstallPlan}>;summary:{total:number;installed:number;missing:number;automatedInstallsEnabled:boolean};jobs?:Record<string,InstallJob>;busy?:boolean;persistence:{homePersisted:boolean;initialized:boolean;restoration:string}};
+type InstallCatalog={tools:Array<ToolStatus & {install:InstallPlan}>;summary:{total:number;installed:number;missing:number;automatedInstallsEnabled:boolean;approvedTools?:string[]};jobs?:Record<string,InstallJob>;busy?:boolean;persistence:{homePersisted:boolean;initialized:boolean;restoration:string}};
 type ResultResponse={result:ProbeResult;plan?:{tool_id:string;action:string};
   explanation?:string|null;aiSource?:string;};
 type Props={tools:LibraryTool[];favorites:string[];onToggleFavorite:(name:string)=>void;
  onDetails:(tool:LibraryTool)=>void;onOpenTerminal:()=>void;};
+const targetLabels:Record<string,string>={
+ railway_python_venv:'Railway — بيئة Python دائمة',
+ railway_debian_apt:'Railway — حزم Debian',
+ isolated_linux_service:'خدمة Linux معزولة مستقلة',
+ isolated_linux_vm:'آلة Linux افتراضية معزولة',
+ dedicated_container_stack:'حاويات وقاعدة بيانات مستقلة',
+ dedicated_kali_vm:'آلة Kali Linux مستقلة',
+ windows_vm:'مختبر Windows منفصل',
+ isolated_network_range:'شبكة اختبار معزولة',
+ dedicated_analysis_vm:'آلة تحليل منفصلة',
+ dedicated_kernel_vm:'آلة افتراضية لاختبار النواة'
+};
+const readinessLabels:Record<string,string>={
+ owner_approved:'مؤهلة للتثبيت بعد موافقة المالك',
+ separate_environment:'تتطلب موارد وخدمة معزولة',
+ manual_review:'تتطلب مراجعة توافق يدوية',
+ incompatible_railway_linux:'غير متوافقة مع حاوية Railway الحالية'
+};
 const BASE='/api/terminal/tools';
 const ids:Record<string,string>={
  'Mythic C2':'mythic','Sliver C2':'sliver','Havoc':'havoc','MITRE CALDERA':'caldera',
@@ -53,6 +71,9 @@ const issues:Record<string,string>={
  INSTALL_BUSY:'يوجد تثبيت آخر جارٍ.',
  INSTALL_RATE_LIMIT:'طلب تثبيت متكرر بسرعة.',
  INSTALL_START_FAILED:'تعذّر بدء عملية التثبيت.',
+ INSTALL_APT_NOT_READY:'مثبّت AFL++ المعتمد غير متاح.',
+ INSTALL_APT_SCRIPT_UNTRUSTED:'ملف تثبيت AFL++ لا يملكه root أو غير موثوق.',
+ INSTALL_ROOT_DISK_SPACE_LOW:'قرص نظام Railway لا يملك 750 MiB متاحة للتثبيت.',
  TOOLS_INSTALL_UNAVAILABLE:'خدمة تثبيت الأدوات غير متاحة.',
  TERMINAL_BRIDGE_UNAVAILABLE:'تعذّر الاتصال بالخدمة المحمية.'
 };
@@ -146,7 +167,7 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
   <div className="star-toolops-head">
    <div><span className="eyebrow">LIVE RAILWAY TOOL INVENTORY</span><h2>فحص وتشغيل الأدوات داخل Railway</h2>
     <p>الفحص يعرض ما هو مثبت فعلياً، وليس ما هو مدرج فقط. التشغيل الآلي الحالي يقتصر على جرد الملفات وبعض أوامر الإصدار المحلية الثابتة. جميع النتائج من الحاوية وليست محاكاة.</p></div>
-   <div className="star-toolops-count"><strong>{installedCount===null?'—':installedCount+'/15'}</strong><span>مكتشفة فعلياً</span></div>
+   <div className="star-toolops-count"><strong>{installedCount===null?'—':installedCount+'/15'}</strong><span>مكتشفة فعلياً من أصل 15 · التثبيت التلقائي المصرّح به: {installCatalog?.summary?.approvedTools?.length??4} أدوات</span></div>
   </div>
   <div className="star-toolops-actions"><button type="button" disabled={loading||!!busy} onClick={()=>void refresh()}>{loading?'جارٍ الفحص...':'↻ فحص تثبيت الجميع'}</button>
     <button type="button" onClick={onOpenTerminal}>▣ الترمنال</button>
@@ -172,7 +193,7 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
       {st?.executable&&<code dir="ltr">{st.executable}</code>}
     </div>
     <details className="star-toolops-guide"><summary>حالة وخطة التثبيت</summary>
-      {install?<><p>{install.compatibility}</p><p>السياسة: {install.policy==='owner_one_click'?'تثبيت بضغطة واحدة بعد موافقة المالك':install.policy==='owner_terminal_approval'?'تثبيت يدوي بموافقة المالك':install.policy==='manual_review'?'مراجعة يدوية': 'مختبر منفصل'}</p>{install.command&&<div className="star-toolops-command"><code dir="ltr">{install.command}</code><button type="button" onClick={()=>void copy(install.command!)}>نسخ</button></div>}<small>الأوامر مرجعية. التثبيت المباشر لا يُنفّذ إلا بعد موافقتك، وللأدوات المعتمدة فقط.</small></>:<p>خطة التثبيت غير متاحة من البوابة حالياً.</p>}
+      {install?<><p>{install.compatibility}</p><p><strong>بيئة التشغيل:</strong> {targetLabels[install.target||'']||install.target||'غير محددة'}</p><p><strong>الجاهزية:</strong> {readinessLabels[install.readiness||'']||install.readiness||'مراجعة'}</p>{Array.isArray(install.requirements)&&install.requirements.length>0&&<ul>{install.requirements.map((req,index)=><li key={index}>{req}</li>)}</ul>}<p>السياسة: {install.policy==='owner_one_click'?'تثبيت بضغطة واحدة بعد موافقة المالك':install.policy==='owner_terminal_approval'?'تثبيت يدوي بموافقة المالك':install.policy==='manual_review'?'مراجعة يدوية': 'مختبر منفصل'}</p>{install.command&&<div className="star-toolops-command"><code dir="ltr">{install.command}</code><button type="button" onClick={()=>void copy(install.command!)}>نسخ</button></div>}<small>الأوامر مرجعية. التثبيت المباشر لا يُنفّذ إلا بعد موافقتك، وللأدوات المعتمدة فقط.</small></>:<p>خطة التثبيت غير متاحة من البوابة حالياً.</p>}
       {install?.policy==='owner_one_click'&&!st?.installed&&<button type="button" disabled={!!installBusy||!!busy||!!installCatalog?.busy||job?.status==='running'} onClick={()=>void installTool(id,tool.name)}>
         {installBusy===id?'جارٍ إرسال الطلب...':job?.status==='running'?'التثبيت جارٍ...':'تثبيت مباشر بموافقتي'}
        </button>}
