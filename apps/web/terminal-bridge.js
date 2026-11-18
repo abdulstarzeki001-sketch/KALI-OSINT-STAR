@@ -17,7 +17,11 @@ const ROUTES={
   'training/verify':{method:'POST',upstream:'training/verify'},
   'tools/catalog':{method:'POST',upstream:'tools/catalog'},
   'tools/run':{method:'POST',upstream:'tools/run'},
-  'tools/assistant':{method:'POST',upstream:'tools/assistant'}
+  'tools/assistant':{method:'POST',upstream:'tools/assistant'},
+  'tools/diagnostics':{method:'POST',upstream:'tools/diagnostics'},
+  'tools/live-ai':{method:'POST',upstream:'tools/live-ai'},
+  'tools/install/status':{method:'POST',upstream:'tools/install/status'},
+  'tools/install/start':{method:'POST',upstream:'tools/install/start'}
 };
 
 function json(code,status){
@@ -70,7 +74,7 @@ export async function handleTerminalFunction(context,route) {
    }catch(_){return json('TRAINING_BAD_JSON',400);}
    headers.set('Content-Type','application/json');
  }
- if(route==='tools/run'||route==='tools/assistant'){
+ if(['tools/run','tools/assistant','tools/live-ai','tools/install/start'].includes(route)){
    const declared=Number(request.headers.get('Content-Length')||0);
    if(declared>2048)return json('TOOLS_INPUT_TOO_LARGE',413);
    trainingBody=await request.text();
@@ -87,6 +91,14 @@ export async function handleTerminalFunction(context,route) {
         (typeof parsed.prompt!=='string'||!parsed.prompt.trim()||parsed.prompt.length>400||
          Object.keys(parsed).some(k=>k!=='prompt')))
        return json('TOOLS_INVALID_PROMPT',400);
+     if(route==='tools/live-ai' &&
+        (Object.keys(parsed).length!==1||parsed.confirm!=='RUN_ONE_PROVIDER_CHECK'))
+       return json('AI_PROBE_CONFIRM_REQUIRED',400);
+     if(route==='tools/install/start' &&
+        (Object.keys(parsed).sort().join(',')!=='confirm,tool_id'||
+         !['frida','impacket'].includes(parsed.tool_id)||
+         parsed.confirm!=='INSTALL_CURATED_PINNED'))
+       return json('INSTALL_NOT_APPROVED',400);
    }catch(_){return json('TOOLS_BAD_JSON',400);}
    headers.set('Content-Type','application/json');
  }
