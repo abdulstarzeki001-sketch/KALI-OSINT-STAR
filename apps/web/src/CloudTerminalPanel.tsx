@@ -183,14 +183,10 @@ export default function CloudTerminalPanel(){
  function copyTerminalOutput(){
    const term=terminalRef.current;
    if(!term)return;
-   const buffer=term.buffer.active;
-   const lines:string[]=[];
-   const start=Math.max(0,buffer.length-2000);
-   for(let i=start;i<buffer.length;i++){
-     const line=buffer.getLine(i);
-     if(line)lines.push(line.translateToString(true));
-   }
-   const text=lines.join('\n').trimEnd();
+   // Stable public xterm selection API; no experimental buffer access.
+   term.selectAll();
+   const text=term.getSelection().slice(-160000).trimEnd();
+   term.clearSelection();
    if(!text){setMessage('ماكو مخرجات لنسخها');return;}
    void navigator.clipboard.writeText(text)
      .then(()=>setMessage('تم نسخ المخرجات بدون رموز ANSI'))
