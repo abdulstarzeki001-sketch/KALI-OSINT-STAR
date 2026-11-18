@@ -243,7 +243,7 @@ export default function CloudTerminalPanel(){
      <div ref={outputElement} className="star-terminal-output" dir="ltr" aria-label="مخرجات الطرفية"/>
      <form className="star-terminal-input" onSubmit={sendCommand} autoComplete="off">
        <span aria-hidden="true">$</span>
-       <input type="text" aria-label="أدخل أمر الترمنال" placeholder={status==='ready'?'مثال: sudo apt update':'اضغط اتصال أولاً'} value={command} maxLength={4096} spellCheck={false} autoComplete="off" dir="ltr" disabled={status!=='ready'} onChange={e=>setCommand(e.target.value)}/>
+       <input type="text" aria-label="أدخل أمر الترمنال" placeholder={status==='ready'?'مثال: sudo apt update':'اضغط اتصال أولاً'} value={command} maxLength={4096} spellCheck={false} autoComplete="off" autoCapitalize="none" autoCorrect="off" dir="ltr" disabled={status!=='ready'} onChange={e=>setCommand(e.target.value)}/>
        <button type="submit" disabled={status!=='ready'||!command.trim()}>إرسال</button>
      </form>
    </div>
