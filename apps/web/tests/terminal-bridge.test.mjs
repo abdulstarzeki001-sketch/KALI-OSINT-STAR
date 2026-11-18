@@ -111,3 +111,52 @@ test('native React terminal is linked to hash navigation, not a public Railway i
    assert.match(data,/handleTerminalFunction/);
  }
 });
+
+test('training status and grading use Access-bound same-origin Pages Functions',async()=>{
+ const payload=JSON.stringify({week:'W02',answers:{a:'3',b:'AdminTo'}});
+ const trainingReq=new Request(origin+'/api/terminal/training/verify',{
+   method:'POST',headers:{...jwt,'Content-Type':'application/json'},body:payload
+ });
+ let upstream=null;
+ const fetcher=async req=>{
+   upstream=req;
+   return new Response(JSON.stringify({passed:true,score:100,summary:{schema:1,completed:1,total:8}}),{status:200});
+ };
+ assert.equal((await handleTerminalFunction(context(request('training/status'),fetcher),'training/status')).status,401);
+ assert.equal(upstream,null);
+ const denied=new Request(origin+'/api/terminal/training/verify',{method:'POST',body:payload});
+ assert.equal((await handleTerminalFunction(context(denied,fetcher),'training/verify')).status,401);
+ assert.equal(upstream,null);
+ const result=await handleTerminalFunction(context(trainingReq,fetcher),'training/verify');
+ assert.equal(result.status,200);
+ assert.equal((await result.json()).score,100);
+ assert.equal(upstream.url,'https://wormstar-ai-lab.abdulstarzeki001.workers.dev/api/integrations/kali/terminal/training/verify');
+ assert.equal(await upstream.text(),payload);
+ assert.equal(upstream.headers.get('X-Kali-Terminal-Bridge'),secret);
+ assert.equal(result.headers.get('X-Kali-Terminal-Bridge'),null);
+ const status=await handleTerminalFunction(context(request('training/status','POST',jwt),fetcher),'training/status');
+ assert.equal(status.status,200);
+ assert.equal(upstream.url,'https://wormstar-ai-lab.abdulstarzeki001.workers.dev/api/integrations/kali/terminal/training/status');
+});
+test('training routes reject oversized, cross-origin and invalid JSON submissions',async()=>{
+ let called=false;
+ const fetcher=async()=>{called=true;return new Response('{}');};
+ const req=(body,headers=jwt)=>new Request(origin+'/api/terminal/training/verify',{
+   method:'POST',headers,body
+ });
+ assert.equal((await handleTerminalFunction(context(req('{invalid-json'),fetcher),'training/verify')).status,400);
+ assert.equal((await handleTerminalFunction(context(req('X'.repeat(2500)),fetcher),'training/verify')).status,413);
+ assert.equal((await handleTerminalFunction(context(req('{}',{...jwt,Origin:'https://evil.example'}),fetcher),'training/verify')).status,403);
+ assert.equal(called,false);
+ const src=readFileSync(new URL('../src/main.tsx',import.meta.url),'utf8');
+ const panel=readFileSync(new URL('../src/TrainingPanel.tsx',import.meta.url),'utf8');
+ assert.match(src,/<TrainingPanel onProgress=\{setTrainingProgress\}/);
+ assert.doesNotMatch(src,/setDone\(/);
+ assert.doesNotMatch(src,/stored<number\[\]>\('kos-weeks'/);
+ assert.match(panel,/star-training/);
+ assert.match(panel,/TRAINING_RUNTIME_NOT_READY/);
+ assert.match(panel,/score:100|score:number/);
+ for(const name of ['status.js','verify.js']){
+   assert.match(readFileSync(new URL('../functions/api/terminal/training/'+name,import.meta.url),'utf8'),/handleTerminalFunction/);
+ }
+});
