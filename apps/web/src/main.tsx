@@ -10,6 +10,7 @@ import {OperationsPanel} from './OperationsPanel';
 const StarAIPanel = React.lazy(() => import('./StarAIPanel'));
 const CloudTerminalPanel = React.lazy(() => import('./CloudTerminalPanel'));
 const TrainingPanel = React.lazy(() => import('./TrainingPanel'));
+const ToolOpsController = React.lazy(() => import('./ToolOpsController'));
 import type {TrainingSummary} from './TrainingPanel';
 
 gsap.registerPlugin(useGSAP);
@@ -139,7 +140,23 @@ function App(){
    </div>
  </section>
  <div className="section-head page-animate"><h2>مجالات التدريب</h2><button onClick={()=>navigate('roadmap')}>المسار الكامل ←</button></div><div className="feature-grid page-animate"><div className="feature"><i>01 / RESEARCH</i><h3>OSINT & Recon</h3><p>جمع المعلومات العامة وتحليل المؤشرات ضمن قواعد الخصوصية ونطاقك.</p><button onClick={()=>navigate('platforms')}>استعرض المنصات ←</button></div><div className="feature"><i>02 / IDENTITY</i><h3>Active Directory</h3><p>تحليل علاقات الثقة ومراجعة إعدادات شهادات Windows في مختبرك.</p><button onClick={()=>{navigate('tools');setFilter('Identity')}}>استعرض الأدوات ←</button></div><div className="feature"><i>03 / DEFENSE</i><h3>Purple Team</h3><p>قياس الرصد والاستجابة وتوثيق الثغرات والتوصيات الدفاعية.</p><button onClick={()=>navigate('reports')}>إنشاء تقرير ←</button></div></div></>}
- {page==='tools'&&<><div className="page-title page-animate"><span className="eyebrow">TOOLS LIBRARY</span><h1>مكتبة الأدوات <em>15</em></h1><p>الأوامر هنا تعليمية للقراءة والنسخ؛ لا تُنفَّذ من المتصفح.</p></div><div className="toolbar page-animate"><input id="tool-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="ابحث عن أداة أو تخصص..." aria-label="بحث الأدوات"/><div className="chips">{['الكل','Red Team','Purple Team','Identity','Windows','Network','Reverse','Research'].map(x=><button className={filter===x?'selected':''} key={x} onClick={()=>setFilter(x)}>{x}</button>)}</div></div><div className="tools-grid page-animate">{visible.map((x,i)=><article className="tool-card" key={x.name}><div className="tool-top"><span className="tool-index">{String(i+1).padStart(2,'0')}</span><button title="المفضلة" className={'star '+(favorites.includes(x.name)?'on':'')} onClick={()=>setFavorites(y=>y.includes(x.name)?y.filter(t=>t!==x.name):[...y,x.name])}>★</button></div><h3>{x.name}</h3><span className="pill">{x.group}</span><p>{x.desc}</p><div className="tool-actions"><button onClick={()=>setModal(x)}>التفاصيل ←</button><a target="_blank" rel="noreferrer" href={x.repo}>GitHub ↗</a></div></article>)}</div>{visible.length===0&&<div className="empty">لا توجد أدوات مطابقة.</div>}</>}
+ {page==='tools'&&<>
+  <div className="page-title page-animate"><span className="eyebrow">TOOLS LIBRARY / LIVE RAILWAY</span>
+    <h1>مكتبة الأدوات <em>15</em></h1>
+    <p>حالة تثبيت حقيقية، فحوص محددة ونتائج داخل كل بطاقة؛ الوصول للتنفيذ عبر Cloudflare Access وRailway. الفحص لا يعني تشغيل كل وظيفة هجومية.</p></div>
+  <div className="toolbar page-animate">
+    <input id="tool-search" value={search} onChange={e=>setSearch(e.target.value)}
+      placeholder="ابحث عن أداة أو تخصص..." aria-label="بحث الأدوات"/>
+    <div className="chips">{['الكل','Red Team','Purple Team','Identity','Windows','Network','Reverse','Research'].map(x=>
+      <button className={filter===x?'selected':''} key={x} onClick={()=>setFilter(x)}>{x}</button>)}</div>
+  </div>
+  <React.Suspense fallback={<div className="empty" role="status">جارٍ تحميل مركز الأدوات الفعلي...</div>}>
+   <ToolOpsController tools={visible} favorites={favorites}
+      onToggleFavorite={name=>setFavorites(old=>old.includes(name)?old.filter(x=>x!==name):[...old,name])}
+      onDetails={setModal} onOpenTerminal={()=>navigate('terminal')}/>
+  </React.Suspense>
+  {visible.length===0&&<div className="empty">لا توجد أدوات تطابق البحث.</div>}
+ </>}
  {page==='platforms'&&<><div className="page-title page-animate"><span className="eyebrow">TRAINING PROVIDERS</span><h1>منصات التدريب <em>10</em></h1><p>يُسمح بالاختبار على Machines وLabs المخصصة لحسابك فقط — وليس خوادم المنصات نفسها.</p></div><div className="providers page-animate">{providers.map((x,i)=><article className="provider" key={x.name}><div className="provider-number">{String(i+1).padStart(2,'0')}</div><div><h3>{x.name}</h3><p>{x.type}</p></div><a href={x.link} target="_blank" rel="noreferrer">فتح المنصة ↗</a></article>)}</div></>}
  {page==='labs'&&<><div className="page-title page-animate"><span className="eyebrow">AUTHORIZED WORKSPACE</span><h1>إدارة المختبرات</h1><p>أضف عنوان مختبرك المخصص لأغراض التوثيق فقط، بدون أي اتصال أو فحص تلقائي.</p></div><form className="lab-form page-animate" onSubmit={addLab}><label>منصة المختبر<select value={provider} onChange={e=>setProvider(e.target.value)}>{providers.map(x=><option key={x.name}>{x.name}</option>)}</select></label><label>اسم التمرين<input value={labTitle} onChange={e=>setLabTitle(e.target.value)} placeholder="مثال: Linux privilege audit" /></label><label>عنوان الهدف المخصص لك<input value={target} onChange={e=>setTarget(e.target.value)} required placeholder="مثال: 10.10.10.10 أو رابط Lab معين"/></label><button className="primary" type="submit">إضافة المختبر +</button></form><div className="lab-list page-animate">{labs.map(x=><article key={x.id} className="lab-row"><div><b>{x.title}</b><p>{x.platform} · <code>{x.target}</code></p></div><div className="lab-buttons"><select value={x.status} onChange={e=>setLabs(a=>a.map(y=>y.id===x.id?{...y,status:e.target.value as Lab['status']}:y))}><option>جديد</option><option>قيد العمل</option><option>مكتمل</option></select><button onClick={()=>setLabs(a=>a.filter(y=>y.id!==x.id))} aria-label="حذف">حذف</button></div></article>)}{labs.length===0&&<div className="empty">لا توجد مختبرات مسجلة بعد.</div>}</div></>}
  {page==='roadmap'&&<React.Suspense fallback={<div className="report-panel" role="status">جارٍ تحميل المختبرات الموثقة...</div>}><TrainingPanel onProgress={setTrainingProgress} onOpenTerminal={()=>navigate('terminal')}/></React.Suspense>}
