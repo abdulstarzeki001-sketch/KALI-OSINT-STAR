@@ -8,7 +8,13 @@
 .star-terminal-toolbar{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;padding:7px;background:#101f2b;border-bottom:1px solid #28433f;flex:none}
 .star-terminal-toolbar button{background:#17313a;border:1px solid #305b56;color:#d4ede6;border-radius:8px;min-width:0;min-height:38px;font:700 12px system-ui,sans-serif;padding:5px 3px;display:flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap;cursor:pointer}
 .star-terminal-toolbar button:first-child{background:#176c57;border-color:#309b7d}.star-terminal-toolbar button:disabled{opacity:.38;cursor:not-allowed}.star-terminal-toolbar button:hover:not(:disabled){background:#206158}
-.star-terminal-output{flex:1 1 0;min-height:0;max-width:100%;padding:13px 12px;margin:0;color:#acf6d9;font:12px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;word-break:break-word;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;text-align:left}
+/* Real terminal canvas (xterm.js). Keep the grid, cursor and ANSI positions intact. */
+.star-terminal-output{flex:1 1 0;min-height:0;min-width:0;max-width:100%;width:100%;position:relative;padding:8px 7px;margin:0;color:#acf6d9;background:#06131b;overflow:hidden;text-align:left;direction:ltr;touch-action:pan-y}
+.star-terminal-output .xterm{height:100%;max-width:100%;position:relative}
+.star-terminal-output .xterm-viewport{overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+.star-terminal-output .xterm-screen{max-width:none}
+.star-terminal-output .xterm-helper-textarea{font-size:16px!important}
+
 .star-terminal-input{display:flex;flex:none;gap:7px;align-items:center;min-width:0;padding:7px;border-top:1px solid #28433f}
 .star-terminal-input span{font:700 17px monospace;color:#79eac6}
 .star-terminal-input input{flex:1 1 0;width:0;min-width:0;min-height:38px;border-radius:7px;border:1px solid #355c58;background:#0e2730;color:#ecfff9;padding:8px 10px;font:16px ui-monospace,monospace;outline-offset:2px}
@@ -38,7 +44,7 @@
  .star-terminal-chip{font-size:10px;padding:4px 6px}
  .star-terminal-meta{font-size:10px}
  .star-terminal-frame{min-height:160px;border-radius:9px}
- .star-terminal-output{padding:9px 7px;font-size:12px;line-height:1.43}
+ .star-terminal-output{padding:6px 5px}
  .star-terminal-toolbar button span{font-size:9px}
  .star-terminal-foot{font-size:9px}
 }

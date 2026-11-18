@@ -1,10 +1,12 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
+import {Terminal} from '@xterm/xterm';
+import {FitAddon} from '@xterm/addon-fit';
+import '@xterm/xterm/css/xterm.css';
 import './cloud-terminal.css';
 
 type TerminalStatus='idle'|'connecting'|'ready'|'error';
 type TerminalMessage={type?:string;data?:string;text?:string;message?:string;reason?:string;code?:string;ready?:boolean;aiEnabled?:boolean};
 
-const MAX_OUTPUT=160000;
 const TERM_PATH='/api/terminal';
 const RECEIVED_LIMIT=65536;
 
@@ -21,17 +23,15 @@ function errorText(code:string):string {
  };
  return names[code]||code;
 }
-function appendBounded(existing:string,newText:string):string {
- return (existing+newText).slice(-MAX_OUTPUT);
-}
-
 export default function CloudTerminalPanel(){
  const socket=useRef<WebSocket|null>(null);
- const outputElement=useRef<HTMLPreElement|null>(null);
+ const outputElement=useRef<HTMLDivElement|null>(null);
+ const terminalRef=useRef<Terminal|null>(null);
+ const fitAddonRef=useRef<FitAddon|null>(null);
+ const readyRef=useRef(false);
  const shellElement=useRef<HTMLDivElement|null>(null);
  const [status,setStatus]=useState<TerminalStatus>('idle');
  const [message,setMessage]=useState('جاهز للاتصال بترمنال Railway المحمي');
- const [output,setOutput]=useState('');
  const [command,setCommand]=useState('');
  const [busy,setBusy]=useState(false);
  const [aiOpen,setAiOpen]=useState(false);
@@ -41,26 +41,63 @@ export default function CloudTerminalPanel(){
  const [backupBusy,setBackupBusy]=useState(false);
  const [moreOpen,setMoreOpen]=useState(false);
 
- const display=(text:string)=>setOutput(old=>appendBounded(old,text));
+ // Let xterm interpret the PTY stream. Rendering raw ESC[... as plain text
+ // was the cause of the corrupted prompt and bracketed-paste sequences on iOS.
+ const display=(data:string)=>{terminalRef.current?.write(data);};
  const resize=useCallback(()=>{
-   const ws=socket.current;
+   const term=terminalRef.current;
+   const addon=fitAddonRef.current;
    const area=outputElement.current;
-   if(!ws||ws.readyState!==WebSocket.OPEN||!area)return;
-   const cols=Math.max(20,Math.min(180,Math.floor(area.clientWidth/7.4)));
-   const rows=Math.max(8,Math.min(65,Math.floor(area.clientHeight/17.4)));
-   ws.send(JSON.stringify({type:'resize',cols,rows}));
+   if(!term||!addon||!area||area.clientWidth<40||area.clientHeight<40)return;
+   try{addon.fit();}catch{return;}
+   const ws=socket.current;
+   if(readyRef.current&&ws?.readyState===WebSocket.OPEN){
+     ws.send(JSON.stringify({type:'resize',cols:term.cols,rows:term.rows}));
+   }
  },[]);
 
  useEffect(()=>{
-   if(!outputElement.current)return;
-   outputElement.current.scrollTop=outputElement.current.scrollHeight;
- },[output]);
- useEffect(()=>{
+   const area=outputElement.current;
+   if(!area)return;
+   const term=new Terminal({
+     cols:80,rows:24,scrollback:2500,convertEol:false,
+     fontSize:13,lineHeight:1.3,letterSpacing:0,
+     fontFamily:'SFMono-Regular, Menlo, Consolas, monospace',
+     cursorBlink:true,allowProposedApi:false,
+     theme:{background:'#06131b',foreground:'#acf6d9',cursor:'#7bf2ce'}
+   });
+   const addon=new FitAddon();
+   term.loadAddon(addon);
+   term.open(area);
+   terminalRef.current=term;
+   fitAddonRef.current=addon;
+   term.write('STAR TERMINAL  /  SECURE CLOUD SHELL\r\nاضغط اتصال لبدء الجلسة.\r\n\r\n');
+   const input=term.onData(data=>{
+     const ws=socket.current;
+     if(readyRef.current&&ws?.readyState===WebSocket.OPEN&&data.length<=4096){
+       ws.send(JSON.stringify({type:'input',data}));
+     }
+   });
    const observer=typeof ResizeObserver!=='undefined'
      ?new ResizeObserver(()=>resize()):null;
-   if(shellElement.current)observer?.observe(shellElement.current);
+   observer?.observe(area);
    window.addEventListener('resize',resize,{passive:true});
-   return()=>{observer?.disconnect();window.removeEventListener('resize',resize);socket.current?.close(1000,'VIEW_CLOSED');socket.current=null;};
+   const vv=window.visualViewport;
+   vv?.addEventListener('resize',resize,{passive:true});
+   const animationFrame=window.requestAnimationFrame(()=>resize());
+   return()=>{
+     window.cancelAnimationFrame(animationFrame);
+     observer?.disconnect();
+     window.removeEventListener('resize',resize);
+     vv?.removeEventListener('resize',resize);
+     readyRef.current=false;
+     socket.current?.close(1000,'VIEW_CLOSED');
+     socket.current=null;
+     input.dispose();
+     terminalRef.current=null;
+     fitAddonRef.current=null;
+     term.dispose();
+   };
  },[resize]);
 
  async function beginConnection(){
@@ -85,15 +122,16 @@ export default function CloudTerminalPanel(){
        let data:TerminalMessage;
        try{data=JSON.parse(event.data) as TerminalMessage;}catch{return;}
        if(data.type==='ready'){
+         readyRef.current=true;
          setStatus('ready');setMessage('متصل بحاوية Railway');setBusy(false);
-         display('\n✓ STAR Terminal متصل\n');
+         display('\r\n✓ STAR Terminal متصل\r\n');
          window.setTimeout(resize,0);
        }else if(data.type==='output'&&typeof data.data==='string')display(data.data);
-       else if(data.type==='info'&&typeof data.data==='string')display('\n'+data.data+'\n');
+       else if(data.type==='info'&&typeof data.data==='string')display('\r\n'+data.data+'\r\n');
        else if(data.type==='error'){
          setStatus('error');
          setMessage(errorText(String(data.code||data.message||'AUTH_FAILED')));
-         display('\n[خطأ المصادقة / الاتصال]\n');
+         display('\r\n[خطأ المصادقة / الاتصال]\r\n');
        }else if(data.type==='ai_reply'&&typeof data.text==='string'){
          setAiAnswer(data.text.slice(0,8000));setAiPending(false);
        }else if(data.type==='ai_error'){
@@ -103,13 +141,15 @@ export default function CloudTerminalPanel(){
        }
      };
      ws.onclose=event=>{
+       readyRef.current=false;
        if(socket.current===ws)socket.current=null;
        setStatus(prev=>prev==='error'?'error':'idle');
        setBusy(false);setAiPending(false);
        setMessage(event.wasClean?'انتهى اتصال الترمنال':'انقطع الاتصال — يمكنك إعادة المحاولة');
      };
-     ws.onerror=()=>{setStatus('error');setMessage('فشل WebSocket. تحقق من جلسة Cloudflare Access');setBusy(false);};
+     ws.onerror=()=>{readyRef.current=false;setStatus('error');setMessage('فشل WebSocket. تحقق من جلسة Cloudflare Access');setBusy(false);};
    }catch(e){
+     readyRef.current=false;
      setStatus('error');setBusy(false);setMessage(e instanceof Error?e.message:'تعذّر الاتصال');
    }
  }
@@ -136,8 +176,24 @@ export default function CloudTerminalPanel(){
    if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'input',data:'\u0003'}));
  }
  function disconnect(){
+   readyRef.current=false;
    socket.current?.close(1000,'USER_DISCONNECTED');
    socket.current=null;setStatus('idle');setMessage('تم قطع الاتصال');
+ }
+ function copyTerminalOutput(){
+   const term=terminalRef.current;
+   if(!term)return;
+   // Stable public xterm selection API; no experimental buffer access.
+   term.selectAll();
+   const text=term.getSelection().slice(-160000).trimEnd();
+   term.clearSelection();
+   if(!text){setMessage('ماكو مخرجات لنسخها');return;}
+   void navigator.clipboard.writeText(text)
+     .then(()=>setMessage('تم نسخ المخرجات بدون رموز ANSI'))
+     .catch(()=>setMessage('تعذر النسخ. جرّب تحديد النص داخل الترمنال.'));
+ }
+ function clearTerminalOutput(){
+   terminalRef.current?.clear();
  }
  function sendAi(event:React.FormEvent){
    event.preventDefault();
@@ -176,14 +232,14 @@ export default function CloudTerminalPanel(){
        <button type="button" onClick={()=>void beginConnection()} disabled={busy||status==='connecting'||status==='ready'} title="اتصال آمن">▶ <span>اتصال</span></button>
        <button type="button" onClick={()=>void diagnose()} disabled={busy} title="فحص الاتصال">⌕ <span>فحص</span></button>
        <button type="button" onClick={sendCtrlC} disabled={status!=='ready'} title="Ctrl+C">⌃C <span>إيقاف</span></button>
-       <button type="button" onClick={()=>void navigator.clipboard.writeText(output).then(()=>setMessage('تم نسخ المخرجات')).catch(()=>setMessage('تعذر النسخ'))} disabled={!output} title="نسخ المخرجات">⧉ <span>نسخ</span></button>
-       <button type="button" onClick={()=>setOutput('')} title="مسح الشاشة">⌫ <span>مسح</span></button>
+       <button type="button" onClick={copyTerminalOutput} title="نسخ المخرجات">⧉ <span>نسخ</span></button>
+       <button type="button" onClick={clearTerminalOutput} title="مسح الشاشة">⌫ <span>مسح</span></button>
        <button type="button" onClick={disconnect} disabled={status==='idle'} title="قطع الاتصال">⏻ <span>قطع</span></button>
      </div>
-     <pre ref={outputElement} className="star-terminal-output" dir="ltr" tabIndex={0} aria-label="مخرجات الطرفية">{output||'STAR TERMINAL  /  SECURE CLOUD SHELL\n\nاضغط اتصال لفتح جلسة الطرفية المحمية.\n'}</pre>
+     <div ref={outputElement} className="star-terminal-output" dir="ltr" aria-label="مخرجات الطرفية"/>
      <form className="star-terminal-input" onSubmit={sendCommand} autoComplete="off">
        <span aria-hidden="true">$</span>
-       <input type="text" aria-label="أدخل أمر الترمنال" placeholder={status==='ready'?'اكتب الأمر ثم اضغط Enter':'الاتصال مطلوب أولاً'} value={command} maxLength={4096} spellCheck={false} autoComplete="off" dir="ltr" disabled={status!=='ready'} onChange={e=>setCommand(e.target.value)}/>
+       <input type="text" aria-label="أدخل أمر الترمنال" placeholder={status==='ready'?'مثال: sudo apt update':'اضغط اتصال أولاً'} value={command} maxLength={4096} spellCheck={false} autoComplete="off" autoCapitalize="none" autoCorrect="off" dir="ltr" disabled={status!=='ready'} onChange={e=>setCommand(e.target.value)}/>
        <button type="submit" disabled={status!=='ready'||!command.trim()}>إرسال</button>
      </form>
    </div>
