@@ -1,0 +1,62 @@
+.star-training{max-width:1180px;margin:0 auto;padding:0 0 25px;color:var(--text,#e5eaf1)}
+.star-training *{box-sizing:border-box}
+.star-training-head{display:flex;justify-content:space-between;gap:14px;align-items:center}
+.star-training-head h1{margin:4px 0 7px;font-size:clamp(21px,3vw,33px);line-height:1.35}
+.star-training-head h1 em{font-style:normal;color:#67dac0}
+.star-training-head p{max-width:650px;line-height:1.7;font-size:12px;color:#aebfc8}
+.star-training-score{flex:none;text-align:center;border:1px solid #285f5d;background:#112c2e;border-radius:14px;padding:10px 15px}
+.star-training-score strong{font-size:28px;color:#7ce3c4;display:block;line-height:1.2}
+.star-training-score span{font-size:11px;color:#b3c9c7}
+.star-training-progress{height:7px;width:100%;background:#15252f;border:1px solid #233b48;border-radius:999px;overflow:hidden;margin:12px 0}
+.star-training-progress span{display:block;background:linear-gradient(90deg,#1e9e80,#68e3be);height:100%;transition:width .2s ease}
+.star-training-actions{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:12px 0}
+.star-training-actions button{border:1px solid #365967;border-radius:8px;color:#d8f9f3;background:#122a35;padding:9px 12px;font-size:11px;min-height:36px}
+.star-training-actions button:disabled{opacity:.55;cursor:not-allowed}
+.star-training-notice{font-size:11px;line-height:1.7;color:#91b8b5;margin:0 0 12px}
+.star-training-error{padding:9px;border:1px solid #94534d;background:#351d22;color:#ffd1cb;border-radius:9px;font-size:12px;margin-bottom:10px}
+.star-training-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:12px;align-items:start}
+.star-training-weeks{display:grid;gap:5px}
+.star-training-week{width:100%;min-width:0;min-height:56px;display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:8px;align-items:center;text-align:right;padding:9px 10px;color:#d6ebef;background:#111f2c;border:1px solid #274250;border-radius:10px;cursor:pointer}
+.star-training-week>span{color:#68dac2;font-size:11px;font-weight:700}
+.star-training-week strong{font-size:11px;line-height:1.45;font-weight:600;min-width:0}
+.star-training-week small{color:#9bb5b9;font-size:9px;white-space:nowrap}
+.star-training-week.active{background:#103a36;border-color:#4caa92;box-shadow:inset 3px 0 #64cfb1}
+.star-training-week.verified{border-color:#34856b}
+.star-training-week.verified small{color:#74e4b9}
+.star-training-exercise{min-width:0;background:#101d2a;border:1px solid #2b4b57;border-radius:13px;padding:16px}
+.star-training-exercise-title{display:flex;justify-content:space-between;align-items:center;gap:9px}
+.star-training-exercise-title h2{margin:4px 0;font-size:17px;color:#eefbf7}
+.star-training-exercise>p{font-size:12px;line-height:1.8;color:#becfd3}
+.star-training-mode{border:1px solid #3a6f79;color:#9dd6ec;border-radius:999px;padding:5px 9px;font-size:10px;white-space:nowrap}
+.star-training-mode.live{border-color:#298974;color:#83e4c3}
+.star-training-verified{border:1px solid #3d896b;background:#123a2c;color:#bff4d9;border-radius:8px;padding:9px;font-size:11px;margin:9px 0}
+.star-training-command{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px;margin:12px 0;background:#091722;border:1px solid #294b58;border-radius:9px;padding:9px}
+.star-training-command>span{font-size:10px;color:#9ac2c1;grid-column:1/-1}
+.star-training-command code{min-width:0;overflow-wrap:anywhere;white-space:pre-wrap;color:#89e4c0;font:11px/1.6 ui-monospace,monospace}
+.star-training-command button{border:1px solid #39645c;border-radius:7px;padding:6px 9px;font-size:10px;color:#a5efd3}
+.star-training-evidence{margin:9px 0;border:1px solid #365060;border-radius:9px;background:#0b1925}
+.star-training-evidence summary{font-size:11px;padding:10px;cursor:pointer;color:#cbe5e7}
+.star-training-evidence pre{margin:0;padding:11px;border-top:1px solid #263f48;font:11px/1.6 ui-monospace,monospace;white-space:pre;overflow:auto;max-height:240px;color:#9cdac4;direction:ltr;text-align:left}
+.star-training-form{display:grid;gap:9px;margin-top:12px}
+.star-training-form h3{font-size:13px;margin:0;color:#e8fff8}
+.star-training-form label{display:grid;gap:5px;font-size:11px;color:#cad9dc}
+.star-training-form input{display:block;width:100%;min-width:0;min-height:40px;padding:8px 9px;font-size:16px;color:#fff;background:#0b1b27;border:1px solid #355362;border-radius:8px;direction:ltr;text-align:left}
+.star-training-form button.primary{min-height:42px;padding:10px 13px;border-radius:8px;font-size:12px}
+.star-training-form button:disabled{opacity:.48}
+.star-training-result{display:grid;gap:5px;margin-top:12px;padding:11px;border-radius:9px;font-size:11px;line-height:1.65}
+.star-training-result.passed{border:1px solid #459b7f;background:#12372d;color:#a5efd3}
+.star-training-result.failed{border:1px solid #a7864b;background:#352b1d;color:#f6d1a1}
+.star-training-result strong{font-size:13px}
+.star-training-result small{font-size:10px}
+@media(max-width:800px){
+ .star-training-layout{grid-template-columns:minmax(0,1fr)}
+ .star-training-weeks{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+ .star-training-week{min-height:55px;grid-template-columns:32px minmax(0,1fr);padding:7px}
+ .star-training-week small{grid-column:2;white-space:normal}
+ .star-training-exercise{padding:11px}
+ .star-training-head{align-items:flex-start}
+ .star-training-score{padding:8px;min-width:91px}
+ .star-training-score strong{font-size:22px}
+}
+@media(max-width:370px){.star-training-weeks{grid-template-columns:minmax(0,1fr)}.star-training-week{grid-template-columns:35px minmax(0,1fr) auto}.star-training-week small{grid-column:3}}
+@media(prefers-reduced-motion:reduce){.star-training-progress span{transition:none}}
