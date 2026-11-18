@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {Terminal} from '@xterm/headless';
+import headless from '@xterm/headless';
+const {Terminal}=headless;
 
 function feed(terminal,data){
   return new Promise(resolve=>terminal.write(data,resolve));
