@@ -74,7 +74,15 @@ export function OperationsPanel() {
       await refresh();
     },verb==='approve'?'تم الاعتماد. يلزم ضغط تشغيل الآن.':verb==='run'?'انتهى التنفيذ وسُجلت النتيجة.':'تم إلغاء الطلب.');
   }
-  if (typeof window!=='undefined' && !['127.0.0.1','localhost'].includes(window.location.hostname)) return <section className="ops" dir="rtl"><div className="ops-panel"><h1>مركز العمليات من الآيفون</h1><p>الموقع السحابي لا يتصل مباشرةً بمحرك FastAPI ولا يطلب رموز تشغيل Kali.</p><p>افتح بوابة Wormstar للمالك بعد تسجيل الدخول في Wormstar AI Lab. كلمة مرور Railway تبقى على الخادم ولا تُكتب في موقع KALI. هذه بيئة Debian وليست جهاز Kali الأصلي؛ مهام STAR KALI المتاحة محصورة بالجرد المحلي المصرّح به.</p><p><a href="https://wormstar-ai-lab.abdulstarzeki001.workers.dev/terminal/" className="ops-secondary" target="_blank" rel="noopener noreferrer" style={{display:'inline-block',padding:'12px 18px',marginTop:8}}>فتح ترمنال المالك عبر Wormstar ↗</a></p><p>بعد تسجيل الدخول استخدم <code dir="ltr">star-kali health</code> أو <code dir="ltr">star-kali inventory</code>. لا تضع كلمات مرور أو رموز API في الواجهة العامة.</p></div></section>;
+  if (typeof window!=='undefined' && !['127.0.0.1','localhost'].includes(window.location.hostname)) return <section className="ops" dir="rtl">
+    <header className="ops-header"><div><span className="ops-eyebrow">STAR CLOUD OPERATIONS</span><h1>مركز العمليات السحابي</h1><p>الترمنال الحقيقي صار جزءاً من KALI-OSINT-STAR، يعمل عبر Cloudflare Access وWormstar وRailway.</p></div><span className="ops-status connected">● بوابة محمية</span></header>
+    <div className="ops-panel">
+      <h2>ترمنال STAR داخل المشروع</h2>
+      <p>افتح صفحة الترمنال المدمجة لتشغيل أدوات الحاوية، ومراجعة نتائج STAR KALI، واستخدام مساعد STAR AI. الواجهة لا تحفظ كلمات المرور ولا تكشف منفذ Railway.</p>
+      <div className="ops-flex"><a href="#terminal" className="ops-secondary ops-terminal-entry">فتح الترمنال المدمج</a><a href="https://wormstar-ai-lab.abdulstarzeki001.workers.dev/terminal/" target="_blank" rel="noopener noreferrer" className="ops-secondary ops-terminal-entry">بوابة Wormstar الاحتياطية ↗</a></div>
+      <p>أوامر الفحص الآمن: <code dir="ltr">star-kali health</code> و <code dir="ltr">persist check</code>. اختبر فقط الأنظمة التي تملكها أو لديك إذن صريح بفحصها.</p>
+    </div>
+  </section>;
   return <section className="ops" dir="rtl">
     <header className="ops-header"><div><span className="ops-eyebrow">SECURE LOCAL CONTROL PLANE</span><h1>مركز عمليات Kali</h1><p>وظائف محددة، اعتماد صريح، نتائج حقيقية، وسجل تدقيق محلي.</p></div><span className={'ops-status '+(connected?'connected':'')}>{connected?'● مصادقة ناجحة':'○ غير متصل'}</span></header>
     <div className="ops-warning"><b>حدود الأمان:</b> واجهة تشغيل محلية فقط. لا أوامر Shell عشوائية، ولا استهداف بوابات التدريب الرئيسية. لا تُنشر رموز المصادقة على GitHub أو Cloudflare Pages.</div>
