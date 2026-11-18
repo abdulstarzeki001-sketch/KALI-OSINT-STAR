@@ -35,3 +35,12 @@ If the Pages integration fails, do not change Railway credentials or disable its
 - No secrets or command history are stored in React localStorage.
 - This is a genuine remote shell in a user-controlled container. Do not run targets without authorization and do not treat the container as a fully sandboxed security boundary.
 - The output is plain text, not HTML, to avoid script execution from terminal content.
+
+
+## Dashboard entry point (18 November 2026)
+
+The same-origin terminal is available from the existing `#dashboard` route via its primary **«فتح STAR Terminal»** button and the compact **STAR Terminal داخل KALI-OSINT-STAR** launch card. Both use React's in-app `navigate('terminal')`, which updates the hash to `#terminal` and loads the existing `CloudTerminalPanel`. The sidebar, mobile bottom navigation, Operations panel, and original Wormstar fallback all remain available.
+
+This is a user-interface integration in the `KALI-OSINT-STAR` source repository, not a duplicated Railway terminal, not an iframe, and not a new container. The existing Cloudflare Pages production Service Bindings `WORMSTAR_TERMINAL` and `STAR_AI` and the confidential `KALI_TERMINAL_BRIDGE_SECRET` are reused without rotation or public exposure.
+
+On production Cloudflare Pages, the top bar identifies the environment as `STAR CLOUD` rather than mistakenly showing `LOCAL MODE` when a local FastAPI endpoint is absent. Actual terminal availability still requires the owner to open the tab and press **اتصال**; the UI does not label the Railway WebSocket connected before a `ready` event.
