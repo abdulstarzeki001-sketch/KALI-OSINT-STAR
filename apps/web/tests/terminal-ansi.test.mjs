@@ -18,7 +18,7 @@ function visible(terminal){
 }
 
 test('real terminal parses screenshot ANSI colors, cursor escapes and bracketed paste',async()=>{
-  const terminal=new Terminal({cols:115,rows:16,scrollback:40});
+  const terminal=new Terminal({cols:115,rows:16,scrollback:40,allowProposedApi:true});
   try {
     const fixture='\x1b[?2004h\x1b[1;38;2;73;174;230m┌──(\x1b[1;38;2;94;189;171mtuser@railway\x1b[0m)-[~]\r\n'
       +'\x1b[1;38;2;94;189;171m└─$\x1b[0m sudo apt update\r\n'
@@ -33,7 +33,7 @@ test('real terminal parses screenshot ANSI colors, cursor escapes and bracketed 
 });
 
 test('carriage returns overwrite progress in the viewport rather than printing raw control characters',async()=>{
-  const terminal=new Terminal({cols:100,rows:8});
+  const terminal=new Terminal({cols:100,rows:8,allowProposedApi:true});
   try {
     await feed(terminal,'Reading state information... 0%\rReading state information... 100%\r\n');
     const text=visible(terminal);
@@ -47,14 +47,15 @@ test('native terminal renders PTY output with xterm, fits dimensions and preserv
   const css=readFileSync(new URL('../src/cloud-terminal.css',import.meta.url),'utf8');
   assert.match(src,/import \{Terminal\} from '@xterm\/xterm'/);
   assert.match(src,/import \{FitAddon\} from '@xterm\/addon-fit'/);
-  assert.match(src,/term\.write\(data\)/);
+  assert.match(src,/terminalRef\.current\?\.write\(data\)/);
   assert.match(src,/new Terminal\(/);
   assert.match(src,/new FitAddon\(/);
   assert.match(src,/addon\.fit\(\)/);
   assert.match(src,/term\.onData\(data=>/);
   assert.match(src,/data:command\+'\\r'/);
   assert.match(src,/type:'resize',cols:term\.cols,rows:term\.rows/);
-  assert.match(src,/translateToString\(true\)/);
+  assert.match(src,/term\.selectAll\(\)/);
+  assert.match(src,/term\.getSelection\(\)/);
   assert.match(css,/\.star-terminal-output \.xterm-viewport/);
   assert.doesNotMatch(src,/<pre ref=\{outputElement\}/);
   assert.doesNotMatch(src,/setOutput\(/);
