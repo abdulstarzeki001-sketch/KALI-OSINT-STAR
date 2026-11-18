@@ -168,3 +168,5 @@ export function TrainingPanel({onProgress,onOpenTerminal}:Props){
     </div>}
   </section>;
 }
+
+export default TrainingPanel;
