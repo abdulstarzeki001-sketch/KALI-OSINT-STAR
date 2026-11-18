@@ -22,7 +22,7 @@ jobs:
         run: |
           set -euo pipefail
           BASE="https://kali-osint-star.pages.dev"
-          for entry in "GET /" "POST /api/terminal/session" "POST /api/terminal/diagnose" "POST /api/terminal/backup/latest" "POST /api/terminal/training/status" "POST /api/terminal/training/verify" "POST /api/terminal/tools/catalog" "POST /api/terminal/tools/run" "POST /api/terminal/tools/assistant" "GET /api/terminal/ws"; do
+          for entry in "GET /" "POST /api/terminal/session" "POST /api/terminal/diagnose" "POST /api/terminal/backup/latest" "POST /api/terminal/training/status" "POST /api/terminal/training/verify" "POST /api/terminal/tools/catalog" "POST /api/terminal/tools/run" "POST /api/terminal/tools/assistant" "POST /api/terminal/tools/diagnostics" "POST /api/terminal/tools/live-ai" "POST /api/terminal/tools/install/status" "POST /api/terminal/tools/install/start" "GET /api/terminal/ws"; do
             method="${entry%% *}"
             path="${entry#* }"
             code="$(curl --silent --show-error --max-time 20 \
