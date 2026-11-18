@@ -16,6 +16,7 @@ const ROUTES={
   'training/status':{method:'POST',upstream:'training/status'},
   'training/verify':{method:'POST',upstream:'training/verify'},
   'tools/catalog':{method:'POST',upstream:'tools/catalog'},
+  'tools/install/catalog':{method:'POST',upstream:'tools/install/catalog'},
   'tools/run':{method:'POST',upstream:'tools/run'},
   'tools/assistant':{method:'POST',upstream:'tools/assistant'}
 };

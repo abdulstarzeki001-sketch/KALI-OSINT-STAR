@@ -12,6 +12,8 @@ type ProbeResult={
  outcome:string;note:string;
 };
 type Catalog={source:string;checkedAt:string;tools:ToolStatus[];history:ProbeResult[];notice:string};
+type InstallPlan={policy:string;method:string;package:string|null;command:string|null;compatibility:string;requiresApproval:boolean;executed:boolean;installedByManager:boolean};
+type InstallCatalog={tools:Array<ToolStatus & {install:InstallPlan}>;summary:{total:number;installed:number;missing:number;automatedInstallsEnabled:boolean};persistence:{homePersisted:boolean;initialized:boolean;restoration:string}};
 type ResultResponse={result:ProbeResult;plan?:{tool_id:string;action:string};
   explanation?:string|null;aiSource?:string;};
 type Props={tools:LibraryTool[];favorites:string[];onToggleFavorite:(name:string)=>void;
@@ -63,6 +65,7 @@ function outcomeText(x:ProbeResult):string{
 }
 export default function ToolOpsController({tools,favorites,onToggleFavorite,onDetails,onOpenTerminal}:Props){
  const [catalog,setCatalog]=useState<Catalog|null>(null);
+ const [installCatalog,setInstallCatalog]=useState<InstallCatalog|null>(null);
  const [results,setResults]=useState<Record<string,ProbeResult>>({});
  const [loading,setLoading]=useState(true);
  const [busy,setBusy]=useState('');
@@ -76,6 +79,7 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
    const c=await api<Catalog>('catalog');
    if(!Array.isArray(c.tools)||c.tools.length!==15)throw Error('بيانات جرد الأدوات غير مكتملة.');
    setCatalog(c);
+   try { const plans=await api<InstallCatalog>('install/catalog'); setInstallCatalog(plans); } catch { setInstallCatalog(null); }
    setResults(prev=>{
      const byId={...prev};
      for(const item of c.history||[])if(!byId[item.tool_id])byId[item.tool_id]=item;
@@ -131,7 +135,7 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
   </form>
   {error&&<div className="star-toolops-error" role="alert">{error}</div>}
   <div className="tools-grid page-animate star-toolops-grid">{tools.map((tool,i)=>{
-   const id=ids[tool.name];const st=statuses.get(id);const result=results[id];
+   const id=ids[tool.name];const st=statuses.get(id);const result=results[id];const install=installCatalog?.tools.find(x=>x.id===id)?.install;
    return <article className="tool-card star-toolops-card" key={tool.name}>
     <div className="tool-top"><span className="tool-index">{String(i+1).padStart(2,'0')}</span>
      <button title="المفضلة" className={'star '+(favorites.includes(tool.name)?'on':'')}
@@ -141,6 +145,9 @@ export default function ToolOpsController({tools,favorites,onToggleFavorite,onDe
       <span>{!st?'○ لم يُفحص':st.installed?'● مثبت في Railway':'○ غير مثبت في Railway'}</span>
       {st?.executable&&<code dir="ltr">{st.executable}</code>}
     </div>
+    <details className="star-toolops-guide"><summary>حالة وخطة التثبيت</summary>
+      {install?<><p>{install.compatibility}</p><p>السياسة: {install.policy==='owner_terminal_approval'?'تثبيت يدوي بموافقة المالك':install.policy==='manual_review'?'مراجعة يدوية': 'مختبر منفصل'}</p>{install.command&&<div className="star-toolops-command"><code dir="ltr">{install.command}</code><button type="button" onClick={()=>void copy(install.command!)}>نسخ</button></div>}<small>لم يُنفذ التثبيت تلقائياً. تحقق من توافق البيئة قبل تشغيل أي أمر.</small></>:<p>خطة التثبيت غير متاحة من البوابة حالياً.</p>}
+    </details>
     <details className="star-toolops-guide"><summary>المميزات وطريقة التشغيل</summary>
       <p>{st?.guide||'اعرض حالة التثبيت أولاً. تشغيل الأدوات المتقدمة يحتاج مختبراً مخصصاً.'}</p>
       <div className="star-toolops-command"><code dir="ltr">{tool.command}</code>
