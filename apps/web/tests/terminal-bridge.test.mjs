@@ -80,6 +80,21 @@ test('Backup bytes are only forwarded for bounded, expected .tgz attachments',as
  assert.equal(response.status,502);
 });
 
+test('Dashboard opens same-origin protected xterm without a separate Railway tab',()=>{
+  const root=readFileSync(new URL('../src/main.tsx',import.meta.url),'utf8');
+  const css=readFileSync(new URL('../src/styles.css',import.meta.url),'utf8');
+  assert.match(root,/className="terminal-launch page-animate"/);
+  assert.match(root,/فتح الترمنال المدمج/);
+  assert.match(root,/onClick=\{\(\)=>navigate\('terminal'\)\}/);
+  assert.match(root,/STAR CLOUD/);
+  assert.match(root,/الترمنال السحابي متاح من تبويبه/);
+  assert.match(css,/\.terminal-launch\{/);
+  assert.match(css,/@media\(max-width:760px\)/);
+  assert.match(root,/<CloudTerminalPanel\/>/);
+  assert.doesNotMatch(root,/<iframe/);
+  assert.doesNotMatch(root,/https:\/\/terminal-production-fb16bd35\.up\.railway\.app/);
+});
+
 test('native React terminal is linked to hash navigation, not a public Railway iframe',()=>{
  const root=readFileSync(new URL('../src/main.tsx',import.meta.url),'utf8');
  const cloud=readFileSync(new URL('../src/CloudTerminalPanel.tsx',import.meta.url),'utf8');
