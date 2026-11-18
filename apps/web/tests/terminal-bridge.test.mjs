@@ -207,3 +207,55 @@ test('Tools page cannot send arbitrary shell commands or bypass owner Access',as
  assert.match(component,/tools\.map/);
  assert.doesNotMatch(component,/innerHTML/);
 });
+
+test('maintenance API stays behind owner Access, private service binding and exact prompts',async()=>{
+ let called=0,last=null;
+ const fetcher=async req=>{
+  called++;last=req;
+  return new Response(JSON.stringify({source:'railway_live_diagnostics',ready:true}),{status:200});
+ };
+ const route='tools/diagnostics';
+ assert.equal((await handleTerminalFunction(context(request(route),fetcher),route)).status,401);
+ assert.equal((await handleTerminalFunction(context(request(route,'GET',jwt),fetcher),route)).status,405);
+ assert.equal(called,0);
+ const ok=await handleTerminalFunction(context(request(route,'POST',jwt),fetcher),route);
+ assert.equal(ok.status,200);
+ assert.equal(called,1);
+ assert.equal(last.url,'https://wormstar-ai-lab.abdulstarzeki001.workers.dev/api/integrations/kali/terminal/tools/diagnostics');
+ assert.equal(last.headers.get('X-Kali-Terminal-Bridge'),secret);
+ const install=new Request(origin+'/api/terminal/tools/install/start',{
+  method:'POST',headers:jwt,body:JSON.stringify({tool_id:'impacket',confirm:'INSTALL_CURATED_PINNED'})
+ });
+ assert.equal((await handleTerminalFunction(context(install,fetcher),'tools/install/start')).status,200);
+ assert.equal(last.url,'https://wormstar-ai-lab.abdulstarzeki001.workers.dev/api/integrations/kali/terminal/tools/install/start');
+ assert.deepEqual(await last.json(),{tool_id:'impacket',confirm:'INSTALL_CURATED_PINNED'});
+ const live=new Request(origin+'/api/terminal/tools/live-ai',{
+  method:'POST',headers:jwt,body:JSON.stringify({confirm:'RUN_ONE_PROVIDER_CHECK'})
+ });
+ assert.equal((await handleTerminalFunction(context(live,fetcher),'tools/live-ai')).status,200);
+ assert.equal(last.url,'https://wormstar-ai-lab.abdulstarzeki001.workers.dev/api/integrations/kali/terminal/tools/live-ai');
+ for(const path of ['tools/diagnostics.js','tools/live-ai.js','tools/install/status.js','tools/install/start.js']){
+  const code=readFileSync(new URL('../functions/api/terminal/'+path,import.meta.url),'utf8');
+  assert.match(code,/handleTerminalFunction/);
+ }
+});
+test('maintenance Pages prevents third-party installs, CSRF and unsolicited billable checks',async()=>{
+ let calls=0;
+ const fetcher=async()=>{calls++;return new Response('{}');};
+ const body=(path,obj,headers=jwt)=>new Request(origin+'/api/terminal/tools/'+path,{
+  method:'POST',headers,body:JSON.stringify(obj)
+ });
+ assert.equal((await handleTerminalFunction(context(body('install/start',{tool_id:'mythic',confirm:'INSTALL_CURATED_PINNED'}),fetcher),'tools/install/start')).status,400);
+ assert.equal((await handleTerminalFunction(context(body('install/start',{tool_id:'frida',confirm:'anything'}),fetcher),'tools/install/start')).status,400);
+ assert.equal((await handleTerminalFunction(context(body('install/start',{tool_id:'frida',confirm:'INSTALL_CURATED_PINNED',args:'--force'}),fetcher),'tools/install/start')).status,400);
+ assert.equal((await handleTerminalFunction(context(body('live-ai',{confirm:'yes'}),fetcher),'tools/live-ai')).status,400);
+ assert.equal((await handleTerminalFunction(context(body('live-ai',{confirm:'RUN_ONE_PROVIDER_CHECK'},{
+  ...jwt,Origin:'https://attacker.example'}),fetcher),'tools/live-ai')).status,403);
+ assert.equal((await handleTerminalFunction(context(body('install/start',{tool_id:'impacket',confirm:'INSTALL_CURATED_PINNED'},{Origin:origin}),fetcher),'tools/install/start')).status,401);
+ assert.equal(calls,0);
+ const component=readFileSync(new URL('../src/ToolsMaintenancePanel.tsx',import.meta.url),'utf8');
+ assert.match(component,/RUN_ONE_PROVIDER_CHECK/);
+ assert.match(component,/INSTALL_CURATED_PINNED/);
+ assert.match(component,/star-maint-health/);
+ assert.match(readFileSync(new URL('../src/ToolOpsController.tsx',import.meta.url),'utf8'),/<ToolsMaintenancePanel onInstalled=\{refresh\}/);
+});
