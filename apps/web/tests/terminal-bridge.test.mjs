@@ -236,3 +236,14 @@ test('Pages approved installer endpoint is Access gated, fixed payload only',asy
  assert.equal((await handleTerminalFunction(context(bad,fetcher),'tools/install/execute')).status,400);
  assert.equal(calls,1);
 });
+
+test('Pages explicitly authorizes AFL++ with owner Access, never accepts extra parameters',async()=>{
+ let calls=0;
+ const fetcher=async()=>{calls++;return new Response(JSON.stringify({job:{status:'running'}}),{status:202});};
+ const good=new Request(origin+'/api/terminal/tools/install/execute',{method:'POST',headers:{...jwt,'Content-Type':'application/json'},body:JSON.stringify({tool_id:'aflpp',approval:'I_APPROVE_RAILWAY_TOOL_INSTALL'})});
+ assert.equal((await handleTerminalFunction(context(good,fetcher),'tools/install/execute')).status,202);
+ assert.equal(calls,1);
+ const bad=new Request(origin+'/api/terminal/tools/install/execute',{method:'POST',headers:{...jwt,'Content-Type':'application/json'},body:JSON.stringify({tool_id:'aflpp',approval:'I_APPROVE_RAILWAY_TOOL_INSTALL',command:'id'})});
+ assert.equal((await handleTerminalFunction(context(bad,fetcher),'tools/install/execute')).status,400);
+ assert.equal(calls,1);
+});

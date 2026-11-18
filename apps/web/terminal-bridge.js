@@ -83,7 +83,7 @@ export async function handleTerminalFunction(context,route) {
      if(route==='tools/install/execute' &&
         (Object.keys(parsed).sort().join(',')!=='approval,tool_id' ||
          parsed.approval!=='I_APPROVE_RAILWAY_TOOL_INSTALL'||
-         !['certipy','impacket','frida'].includes(parsed.tool_id)))
+         !['certipy','impacket','frida','aflpp'].includes(parsed.tool_id)))
         return json('INSTALL_APPROVAL_REQUIRED',400);
      if(route==='tools/run' &&
         (typeof parsed.tool_id!=='string'||!/^[-a-z0-9]{2,32}$/.test(parsed.tool_id)||
