@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {verifyAccessJwt, accessFailureStatus, accessConfig} from '../access-jwt.js';
-import {mint, ownerToken, attackerPair, certs, resetCerts, AUD, OWNER_EMAIL} from './access-test-keys.mjs';
+import {mint, ownerToken, attackerPair, certs, resetCerts, CERTS_URL, AUD, OWNER_EMAIL} from './access-test-keys.mjs';
 
 test.beforeEach(resetCerts);
 
@@ -65,6 +65,27 @@ test('caches the JWKS and refetches once for an unknown key id (rotation)', asyn
   const rotated = await mint({}, {header: {kid: 'not-published'}});
   assert.equal((await verifyAccessJwt(rotated, {})).reason, 'ACCESS_TOKEN_UNKNOWN_KEY');
   assert.equal(certs.calls, 2);
+});
+
+test('fetches signing keys in Workers without following redirects', async () => {
+  const fetch = async (url, init) => {
+    assert.equal(url, CERTS_URL);
+    if (init.redirect === 'error') throw new TypeError('Unsupported Workers redirect mode');
+    assert.equal(init.redirect, 'manual');
+    return Response.json({keys: certs.keys});
+  };
+  assert.equal((await verifyAccessJwt(ownerToken, {}, {fetch})).ok, true);
+});
+
+test('rejects a redirected signing-key response without fetching its destination', async () => {
+  const requests = [];
+  const fetch = async (url, {redirect}) => {
+    requests.push({url, redirect});
+    return Response.redirect('https://example.test/keys', 302);
+  };
+  const result = await verifyAccessJwt(ownerToken, {}, {fetch});
+  assert.equal(result.reason, 'ACCESS_CERTS_UNAVAILABLE');
+  assert.deepEqual(requests, [{url: CERTS_URL, redirect: 'manual'}]);
 });
 
 test('fails closed with 503 when the JWKS cannot be fetched or config is invalid', async () => {
