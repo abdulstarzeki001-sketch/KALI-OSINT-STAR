@@ -87,6 +87,10 @@ SECURITY.md                   سياسة أمنية
 
 تعليمات الإعداد التفصيلية: [docs/LOCAL_OPERATIONS_AR.md](docs/LOCAL_OPERATIONS_AR.md). ابدأ محلياً بالأمر: bash scripts/init-local.sh ثم شغّل API على 127.0.0.1:8000 وVite على 127.0.0.1:5173. رموز المصادقة لا تُنشر على GitHub ولا تُحقن في VITE_ أو Cloudflare Pages.
 
+## ساحة التدريب الحقيقية (Docker على Kali)
+
+أهداف ضعيفة عمداً (OWASP Juice Shop وDVWA وWebGoat) على شبكة Docker معزولة بلا إنترنت، تُدار من تبويب **ساحة التدريب** في مركز العمليات المحلي. كل تشغيل يُنشئ الحاوية من الصفر، وJuice Shop يعطي أعلاماً ديناميكية يتحقق منها الخادم لكل محاولة. الساحة معطّلة افتراضياً (`STAR_RANGE_ENABLED=true` لتفعيلها). التفاصيل: [docs/RANGE_AR.md](docs/RANGE_AR.md).
+
 ## التدريب العملي الموثّق (18 نوفمبر 2026)
 
 - رابط التدريب: https://kali-osint-star.pages.dev/#roadmap
