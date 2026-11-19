@@ -16,8 +16,48 @@ const SYSTEM=[
 ].join("\n");
 function response(body,status=200){return new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","referrer-policy":"no-referrer"}})}
 function hasSecret(s){return /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|sk-(?:proj-)?[A-Za-z0-9_-]{15,}|gh[pousr]_[A-Za-z0-9_]{20,}|Authorization\s*:\s*Bearer\s+[A-Za-z0-9._~-]{24,}/i.test(s)}
+// Chat uses a separate, general-purpose prompt. The existing /analyze
+// report workflow is preserved unchanged for STAR AI Security Analyst.
+const CHAT_SYSTEM={
+ general:"أنت STAR AI Agent، مساعد احترافي مستقل في العلوم والبرمجة والتقنية والكتابة. أجب مباشرة بلغة المستخدم وبوضوح. لا تحوّل كل سؤال إلى تقرير أمني. ميّز الحقائق عن التخمين ولا تدّع امتلاك أدوات أو نتائج لم تستخدمها.",
+ code:"أنت STAR AI Coding Agent. قدّم برامج واضحة وصحيحة، إصلاحات أخطاء، خطوات اختبار، وتوضيحات عملية. اذكر المتطلبات والقيود، ولا تدّع أنك شغّلت الكود أو عدّلت GitHub.",
+ security:"أنت STAR AI Cybersecurity Analyst. ناقش هندسة الشبكات، كشف الثغرات، تحليل السجلات، OWASP، وطرق التحصين بتفصيل مهني. افصل بين الفرضية والدليل. لا تدّع تنفيذ فحص أو الوصول إلى أي نظام.",
+ agent:"أنت STAR AI Planning Agent. ساعد على تقسيم المهام إلى مراحل ومخرجات ومعايير قبول. لا تذكر تنفيذ أوامر أو تشغيل أدوات دون نتيجة صريحة. اقترح أداة مناسبة من KALI OSINT STAR لكن تشغيل الترمنال يحتاج إجراء وموافقة منفصلين."
+};
+async function chat(request,env){
+ if(request.method!=="POST")return response({error:"POST only"},405);
+ if(!env.AI)return response({error:"Workers AI binding unavailable"},503);
+ if(!request.headers.get("content-type")?.toLowerCase().includes("application/json"))return response({error:"JSON only"},415);
+ let data;
+ try{const raw=await request.text();if(raw.length>30000)return response({error:"Conversation too large"},413);data=JSON.parse(raw);}
+ catch{return response({error:"Invalid JSON"},400);}
+ if(!data||!Array.isArray(data.messages)||data.messages.length<1||data.messages.length>24||
+    !Object.hasOwn(CHAT_SYSTEM,data.mode)||typeof data.stream!=="boolean")
+    return response({error:"Invalid chat request"},422);
+ let total=0;
+ for(const message of data.messages){
+  if(!message||!["user","assistant"].includes(message.role)||typeof message.content!=="string"||
+     !message.content.trim()||message.content.length>5000)return response({error:"Invalid chat message"},422);
+  total+=message.content.length;
+  if(hasSecret(message.content))return response({error:"Potential secret detected. Redact private keys or credentials."},422);
+ }
+ if(total>24000||data.messages.at(-1).role!=="user")return response({error:"Conversation too large"},422);
+ const temperature=typeof data.temperature==="number"&&Number.isFinite(data.temperature)&&data.temperature>=0&&data.temperature<=1?data.temperature:0.5;
+ const messages=[{role:"system",content:CHAT_SYSTEM[data.mode]},...data.messages.map(m=>({role:m.role,content:m.content}))];
+ try{
+  const result=await env.AI.run(MODEL,{messages,temperature,max_tokens:2100,...(data.stream?{stream:true}:{})});
+  if(data.stream){
+   if(!result||typeof result.getReader!=="function")return response({error:"Model did not return a streaming response"},503);
+   return new Response(result,{headers:{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","x-star-model":MODEL}});
+  }
+  const reply=typeof result?.response==="string"?result.response:typeof result?.output?.[0]?.content==="string"?result.output[0].content:"";
+  if(!reply.trim())return response({error:"Model returned empty reply"},503);
+  return response({status:"completed",model:MODEL,reply:reply.slice(0,24000)});
+ }catch{return response({error:"AI inference unavailable; check model access and account quota"},503);}
+}
 export default {
  async fetch(request,env){
+  if(new URL(request.url).pathname==="/chat")return chat(request,env);
   if(new URL(request.url).pathname!=="/analyze"||request.method!=="POST")return response({error:"Not found"},404);
   if(!env.AI)return response({error:"Workers AI binding unavailable"},503);
   if(!request.headers.get("content-type")?.toLowerCase().includes("application/json"))return response({error:"JSON only"},415);

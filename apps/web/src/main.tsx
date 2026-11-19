@@ -8,19 +8,20 @@ import './operations.css';
 import {OperationsPanel} from './OperationsPanel';
 // Defer the Markdown renderer to the STAR AI screen.
 const StarAIPanel = React.lazy(() => import('./StarAIPanel'));
+const AgentChatPanel = React.lazy(() => import('./AgentChatPanel'));
 const CloudTerminalPanel = React.lazy(() => import('./CloudTerminalPanel'));
 const TrainingPanel = React.lazy(() => import('./TrainingPanel'));
 const ToolOpsController = React.lazy(() => import('./ToolOpsController'));
 import type {TrainingSummary} from './TrainingPanel';
 
 gsap.registerPlugin(useGSAP);
-type Page = 'dashboard'|'tools'|'platforms'|'labs'|'roadmap'|'reports'|'operations'|'terminal'|'ai'|'settings';
+type Page = 'dashboard'|'tools'|'platforms'|'labs'|'roadmap'|'reports'|'operations'|'terminal'|'ai'|'agent'|'settings';
 type Tool = {name:string, group:string, desc:string, repo:string, command:string};
 type Lab = {id:number,platform:string,target:string,title:string,status:'جديد'|'قيد العمل'|'مكتمل'};
 const links: {id:Page,label:string,ico:string}[] = [
 {id:'dashboard',label:'لوحة التحكم',ico:'◈'},{id:'tools',label:'مكتبة الأدوات',ico:'⌘'},
 {id:'platforms',label:'منصات التدريب',ico:'◎'},{id:'labs',label:'المختبرات',ico:'▣'},
-{id:'roadmap',label:'مسار التدريب',ico:'↗'},{id:'reports',label:'التقارير',ico:'▤'},{id:'operations',label:'مركز العمليات',ico:'⌘'},{id:'terminal',label:'الترمنال',ico:'▣'},{id:'ai',label:'STAR AI',ico:'✧'},{id:'settings',label:'الإعدادات',ico:'⚙'}];
+{id:'roadmap',label:'مسار التدريب',ico:'↗'},{id:'reports',label:'التقارير',ico:'▤'},{id:'operations',label:'مركز العمليات',ico:'⌘'},{id:'terminal',label:'الترمنال',ico:'▣'},{id:'ai',label:'STAR AI',ico:'✧'},{id:'agent',label:'AI Agent',ico:'✳'},{id:'settings',label:'الإعدادات',ico:'⚙'}];
 const toolList:Tool[]=[
 {name:'Mythic C2',group:'Red Team',desc:'تنظيم اختبارات محاكاة الخصوم في مختبر معزول',repo:'https://github.com/its-a-feature/Mythic',command:'./mythic-cli health'},
 {name:'Sliver C2',group:'Red Team',desc:'محاكاة الاتصال بخادم قيادة وتحكم مصرح به',repo:'https://github.com/BishopFox/sliver',command:'sliver-server version'},
@@ -164,9 +165,10 @@ function App(){
  {page==='operations'&&<OperationsPanel/>}
  {page==='terminal'&&<React.Suspense fallback={<div className="report-panel" role="status">جارٍ تحميل الترمنال...</div>}><CloudTerminalPanel/></React.Suspense>}
  {page==='ai'&&<React.Suspense fallback={<div role="status" className="report-panel" aria-live="polite">جارٍ تحميل STAR AI...</div>}><StarAIPanel/></React.Suspense>}
+ {page==='agent'&&<React.Suspense fallback={<div role="status" className="report-panel" aria-live="polite">جارٍ تجهيز AI Agent...</div>}><AgentChatPanel/></React.Suspense>}
   {page==='settings'&&<><div className="page-title page-animate"><span className="eyebrow">SYSTEM SETTINGS</span><h1>إعدادات مساحة العمل</h1><p>المختبرات والمفضلة محفوظة في المتصفح؛ أما نتائج التدريب المصححة فتحفظ على Railway وتُقرأ عند تسجيل الدخول.</p></div><div className="settings-panel page-animate"><div><strong>حالة API المحلية</strong><p>{api==='online'?'الاتصال بخادم FastAPI ناجح':'لم يتصل المتصفح بخادم FastAPI'}</p></div><div><strong>STAR Terminal</strong><p>ترمنال حقيقي داخل Railway، يتطلب Cloudflare Access والضغط على اتصال. نتائج التمارين تُصحّح في الخادم.</p></div><div><strong>حفظ البيانات</strong><p>localStorage داخل المتصفح الحالي</p></div><button className="danger-action" onClick={()=>{if(confirm('حذف المختبرات والمفضلة المحلية فقط؟ نتائج التدريب الموثقة في Railway لن تُحذف.')){setLabs([]);setFavorites([]);show('تم مسح البيانات المحلية فقط')}}}>مسح البيانات المحلية</button></div></>}
  </main><footer>© KALI-OSINT-STAR · AUTHORIZED LABS ONLY · BUILT FOR DEFENSIVE RESEARCH</footer></div>
- <div className="mobile-nav" aria-label="الأقسام السريعة على الآيفون">{links.filter(x=>['dashboard','tools','terminal','operations','ai'].includes(x.id)).map(x=><button key={x.id} className={page===x.id?'selected':''} onClick={()=>navigate(x.id)}><span>{x.ico}</span><small>{x.label}</small></button>)}</div>
+ <div className="mobile-nav" aria-label="الأقسام السريعة على الآيفون">{links.filter(x=>['dashboard','tools','terminal','operations','agent'].includes(x.id)).map(x=><button key={x.id} className={page===x.id?'selected':''} onClick={()=>navigate(x.id)}><span>{x.ico}</span><small>{x.label}</small></button>)}</div>
  {modal&&<div className="modal-backdrop" onMouseDown={()=>setModal(null)}><div className="modal" role="dialog" aria-modal="true" onMouseDown={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setModal(null)}>✕</button><span className="eyebrow">{modal.group} / TOOL DETAIL</span><h2>{modal.name}</h2><p>{modal.desc}</p><div className="command"><code>{modal.command}</code><button onClick={()=>copy(modal.command)}>نسخ</button></div><small>أمر مرجعي فقط: يتطلب تثبيت الأداة وبيئة مصرح بها.</small><a href={modal.repo} target="_blank" rel="noreferrer" className="modal-link">فتح المستودع الرسمي ↗</a></div></div>}
  {message&&<div className="toast" role="status">{message}</div>}
  </div></ReactLenis>;
