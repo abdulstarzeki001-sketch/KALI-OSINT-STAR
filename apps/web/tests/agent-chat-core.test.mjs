@@ -30,7 +30,7 @@ test('stream returns actual SSE chunks with no caching',async()=>{
   return new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: {"response":"streamed"}\n\ndata: [DONE]\n\n'));c.close();}});
  }};
  const r=await worker.fetch(request({mode:'agent',messages:history,stream:true}),{AI});
- assert.equal(r.status,200);assert.match(r.headers.get('content-type'),'text/event-stream');
+ assert.equal(r.status,200);assert.match(r.headers.get('content-type'),/text\/event-stream/);
  assert.equal(r.headers.get('cache-control'),'no-store');
  assert.match(await r.text(),/streamed/);assert.equal(invoked,1);
 });
