@@ -24,7 +24,7 @@ const links: {id:Page,label:string,ico:string}[] = [
 {id:'platforms',label:'منصات التدريب',ico:'⌖'},{id:'labs',label:'المختبرات',ico:'⌬'},
 {id:'workflows',label:'مسارات العمل',ico:'↬'},{id:'reports',label:'التقارير',ico:'▤'},
 {id:'roadmap',label:'التدريب الموثق',ico:'◉'},{id:'operations',label:'مركز العمليات',ico:'◇'},
-{id:'terminal',label:'STAR Terminal',ico:'⌘'},{id:'ai',label:'STAR AI',ico:'✧'},
+{id:'terminal',label:'الترمنال',ico:'⌘'},{id:'ai',label:'STAR AI',ico:'✧'},
 {id:'agent',label:'AI Agent',ico:'✳'},{id:'settings',label:'الإعدادات',ico:'⚙'}];
 const toolList:Tool[]=[
 {name:'Mythic C2',group:'Red Team',desc:'تنظيم اختبارات محاكاة الخصوم في مختبر معزول',repo:'https://github.com/its-a-feature/Mythic',command:'./mythic-cli health'},
@@ -133,7 +133,7 @@ function App(){
   <nav aria-label="الأدوات والخدمات السحابية">{links.slice(5).map(x=><button key={x.id} type="button" className={'nav '+(page===x.id?'active':'')} aria-current={page===x.id?'page':undefined} onClick={()=>{navigate(x.id);setMenu(false);window.scrollTo({top:0,behavior:'smooth'})}}><span className="navico" aria-hidden="true">{x.ico}</span><span>{x.label}</span>{page===x.id&&<span className="nav-active-dot" aria-hidden="true"/>}</button>)}</nav>
   <div className="sidebar-bottom">
     <div className="side-promo"><span className="side-promo-tag">✧ LEARNING PATH</span><strong>رحلتك الأمنية تبدأ هنا.</strong><p>ثمانية أسابيع من التدريب المتحقق منه عبر Railway.</p><button type="button" onClick={()=>{navigate('roadmap');setMenu(false)}}>ابدأ التدريب ←</button></div>
-    <div className="runtime"><span className={'dot '+(api==='online'?'live':'')}/><div><strong>{api==='online'?'API متصل':'مساحة عمل محمية'}</strong><small>التشغيل السحابي يتطلب صلاحية الدخول</small></div></div>
+    <div className="runtime"><span className={'dot '+(api==='online'?'live':'')}/><div><strong>{api==='online'?'API متصل':'مساحة عمل محمية'}</strong><small>الترمنال السحابي متاح من تبويبه بعد المصادقة</small></div></div>
     <a href="https://github.com/abdulstarzeki001-sketch/KALI-OSINT-STAR" target="_blank" rel="noreferrer">↗ GitHub Repository</a>
   </div>
  </aside>
