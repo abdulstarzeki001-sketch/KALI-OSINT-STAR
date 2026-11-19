@@ -1,4 +1,6 @@
-// Cloudflare Access protects the canonical host before this Function executes.
+import {verifyAccessRequest,accessFailureStatus} from '../../../access-jwt.js';
+// Cloudflare Access protects the canonical host before this Function executes;
+// the injected application JWT is verified again here (see access-jwt.js).
 // This Function does not forward requests to Kali or accept execution commands.
 const HOST = 'kali-osint-star.pages.dev';
 function json(value,status=200){return new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer'}})}
@@ -8,6 +10,8 @@ export async function onRequestPost({request,env}){
  const origin=request.headers.get('origin');
  if(origin && origin!==url.origin)return json({error:'Cross-origin requests denied'},403);
  if(!request.headers.get('Cf-Access-Jwt-Assertion'))return json({error:'Cloudflare Access login required'},401);
+ const access=await verifyAccessRequest(request,env);
+ if(!access.ok)return json({error:'Cloudflare Access verification failed',code:access.reason},accessFailureStatus(access.reason));
  if(!request.headers.get('content-type')?.toLowerCase().includes('application/json'))return json({error:'JSON request required'},415);
  if(!env.STAR_AI)return json({error:'AI service binding not configured'},503);
  let input;

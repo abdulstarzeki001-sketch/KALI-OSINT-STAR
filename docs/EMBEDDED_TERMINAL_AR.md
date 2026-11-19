@@ -30,6 +30,8 @@ If the Pages integration fails, do not change Railway credentials or disable its
 
 ## Security
 
+- Every Pages Function behind the terminal bridge and `/api/ai/analyze` verifies the `Cf-Access-Jwt-Assertion` JWT itself (`apps/web/access-jwt.js`): RS256 signature against `https://<team>.cloudflareaccess.com/cdn-cgi/access/certs`, `iss`, `aud`, `type=app`, `exp`/`nbf`, and a non-empty identity. Presence of the header alone is no longer trusted, and the signed `meta` token that the public Access login page hands to anonymous visitors is rejected. Unreachable signing keys fail closed with 503.
+  - Defaults: team `fancy-haze-5879.cloudflareaccess.com`, AUD `6292524f…2e26` (public identifiers, not secrets). Override with Pages variables `ACCESS_TEAM_DOMAIN` / `ACCESS_AUD`; optionally set `ACCESS_ALLOWED_EMAILS` (comma separated) for an in-code owner allowlist.
 - WebSocket connection is user-initiated, and no port scan happens on page load.
 - Production traffic requires the KALI Cloudflare Access owner app; preview credentials do not authorize the canonical endpoint.
 - No secrets or command history are stored in React localStorage.
