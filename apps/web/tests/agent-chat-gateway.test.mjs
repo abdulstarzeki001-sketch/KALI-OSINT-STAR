@@ -50,7 +50,7 @@ test('valid multi-turn chat forwards roles, mode and an actual SSE body',async()
  const r=await onRequestPost({request:input({headers:{Origin:'https://kali-osint-star.pages.dev'},body:JSON.stringify({messages:history,mode:'code',stream:true,temperature:0.4})}),env:{STAR_AI:s}});
  assert.equal(r.status,200);
  assert.equal(r.headers.get('Cache-Control'),'no-store');
- assert.match(r.headers.get('Content-Type'),'text/event-stream');
+ assert.match(r.headers.get('Content-Type'),/text\/event-stream/);
  assert.match(await r.text(),/اهلا من النموذج الحقيقي/);
  assert.equal(s.calls,1);assert.equal(s.received.mode,'code');
  assert.deepEqual(s.received.messages,history);
