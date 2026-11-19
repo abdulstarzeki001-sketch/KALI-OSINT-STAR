@@ -4,10 +4,12 @@ from fastapi import FastAPI, Request
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .operations import router as operations_router, configured
 from .tool_runner import router as tool_router, recover_interrupted_jobs
+from .range_manager import router as range_router, recover_interrupted_attempts, enabled as range_enabled
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     recover_interrupted_jobs()
+    recover_interrupted_attempts()
     yield
 
 app = FastAPI(title="KALI OSINT STAR API", version="0.3.0",
@@ -16,6 +18,7 @@ app = FastAPI(title="KALI OSINT STAR API", version="0.3.0",
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 app.include_router(operations_router)
 app.include_router(tool_router)
+app.include_router(range_router)
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
@@ -34,9 +37,10 @@ def health():
 def capabilities():
     return {"mode": "training-only", "remote_execution": False,
             "vulnerability_scanning": False, "authentication_configured": configured(),
-            "local_approved_tasks": configured(),
+            "local_approved_tasks": configured(), "training_range_enabled": range_enabled(),
             "features": ["health-check", "training-metadata", "approved-local-operations",
-                         "read-only-tool-catalog", "approval-gated-tool-probes", "audit-log"],
+                         "read-only-tool-catalog", "approval-gated-tool-probes", "audit-log",
+                          "isolated-training-range"],
             "notice": "No arbitrary shell, external scanning or C2 operations."}
 
 @app.get("/api/v1")

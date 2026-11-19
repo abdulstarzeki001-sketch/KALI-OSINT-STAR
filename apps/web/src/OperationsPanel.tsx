@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import './operations.css';
 import {ToolingPanel} from './ToolingPanel';
+import {RangePanel} from './RangePanel';
 
 type Job = { id:string; kind:string; target:string|null; port:number|null; status:string; result:unknown; created_at:string };
 type Audit = { id:number; time:string; action:string; detail:string; job_id:string };
@@ -29,7 +30,7 @@ export function OperationsPanel() {
   const [operator,setOperator]=useState('');
   const [approver,setApprover]=useState('');
   const [connected,setConnected]=useState(false);
-  const [section,setSection]=useState<'tools'|'jobs'>('tools');
+  const [section,setSection]=useState<'tools'|'jobs'|'range'>('range');
   const [jobs,setJobs]=useState<Job[]>([]);
   const [audit,setAudit]=useState<Audit[]>([]);
   const [kind,setKind]=useState('tool_inventory');
@@ -89,7 +90,8 @@ export function OperationsPanel() {
     <div className="ops-panel"><h2>الاتصال الآمن</h2><div className="ops-flex"><input type="password" autoComplete="off" spellCheck={false} value={operator} onChange={e=>setOperator(e.target.value)} placeholder="رمز STAR_OPERATOR_TOKEN (يبقى في الذاكرة)" aria-label="رمز المشغل"/><button disabled={busy||operator.length<32} onClick={()=>void perform(refresh,'تم التحقق من الاتصال وقراءة السجلات')}>اتصال وتحديث</button><button className="ops-secondary" onClick={leave}>إنهاء الجلسة</button></div><small>شغّل FastAPI محلياً، ثم ألصق رمز المشغل من ملف .env.local الذي أنشأته على جهازك. لا تحفظه في المتصفح.</small></div>
     {error&&<div role="alert" className="ops-error">{error}</div>}
     {message&&<div role="status" className="ops-success">{message}</div>}
-    {connected&&<nav className="ops-tabs" aria-label="أقسام مركز العمليات"><button type="button" aria-pressed={section==='tools'} onClick={()=>setSection('tools')}>مركز الأدوات الـ15</button><button type="button" aria-pressed={section==='jobs'} onClick={()=>setSection('jobs')}>المهام الأساسية</button></nav>}
+    {connected&&<nav className="ops-tabs" aria-label="أقسام مركز العمليات"><button type="button" aria-pressed={section==='range'} onClick={()=>setSection('range')}>ساحة التدريب</button><button type="button" aria-pressed={section==='tools'} onClick={()=>setSection('tools')}>مركز الأدوات الـ15</button><button type="button" aria-pressed={section==='jobs'} onClick={()=>setSection('jobs')}>المهام الأساسية</button></nav>}
+    {connected&&section==='range'&&<RangePanel token={operator}/>}
     {connected&&section==='tools'&&<ToolingPanel token={operator}/>}
     {connected&&section==='jobs'&&<>
       <div className="ops-columns">
