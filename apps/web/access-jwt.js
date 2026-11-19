@@ -58,7 +58,8 @@ export function accessConfig(env = {}) {
 async function signingKeys(certsUrl, fetchImpl, now, forceRefresh) {
   const cached = keyCache.get(certsUrl);
   if (!forceRefresh && cached && cached.expires > now) return cached.keys;
-  const response = await fetchImpl(certsUrl, { headers: { accept: 'application/json' }, redirect: 'error' });
+  // Workers only supports manual or follow. Reject 3xx below so keys stay on the configured issuer.
+  const response = await fetchImpl(certsUrl, { headers: { accept: 'application/json' }, redirect: 'manual' });
   if (!response.ok) throw new Error('certs_unavailable');
   const body = await response.json();
   const keys = new Map();
