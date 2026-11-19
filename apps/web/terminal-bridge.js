@@ -6,6 +6,8 @@
  * Wormstar -> Railway: its existing 20-second ticket and private origin gate.
  * Never place Railway passwords or the bridge secret in a frontend bundle.
  */
+import {verifyAccessRequest,accessFailureStatus} from './access-jwt.js';
+
 const CANONICAL_HOST='kali-osint-star.pages.dev';
 const WORKER_ORIGIN='https://wormstar-ai-lab.abdulstarzeki001.workers.dev';
 const ROUTES={
@@ -37,12 +39,16 @@ export async function handleTerminalFunction(context,route) {
  if(!spec)return json('NOT_FOUND',404);
  if(u.hostname!==CANONICAL_HOST || u.protocol!=='https:')return json('FORBIDDEN_HOST',403);
  if(request.method!==spec.method)return json('METHOD_NOT_ALLOWED',405);
- // Pages production Access enforces the actual owner identity at Cloudflare's
- // edge; this assertion is injected by Access, not accepted as a login token.
+ // Access enforces the owner policy at Cloudflare's edge. This Function also
+ // verifies the injected application JWT (signature, iss, aud, type=app, exp)
+ // so a misconfigured or bypassed Access policy cannot be exploited with a
+ // forged header or with the signed `meta` token from the public login page.
  if(!request.headers.get('Cf-Access-Jwt-Assertion'))return json('ACCESS_REQUIRED',401);
  const origin=request.headers.get('Origin');
  if((route==='ws' && origin!==u.origin) || (origin && origin!==u.origin))
    return json('ORIGIN_DENIED',403);
+ const access=await verifyAccessRequest(request,env);
+ if(!access.ok)return json(access.reason,accessFailureStatus(access.reason));
  const binding=env?.WORMSTAR_TERMINAL;
  const secret=env?.KALI_TERMINAL_BRIDGE_SECRET;
  if(!binding || typeof binding.fetch!=='function' ||

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {handleTerminalFunction} from '../terminal-bridge.js';
+import {ownerToken, mint, attackerPair, resetCerts, certs} from './access-test-keys.mjs';
 
 const origin='https://kali-osint-star.pages.dev';
 const secret='test-only-very-long-internal-bridge-secret-0123456';
@@ -15,7 +16,8 @@ function context(req, fetcher, otherEnv={}){
    ...otherEnv
  }};
 }
-const jwt={'Cf-Access-Jwt-Assertion':'owner-access-test-assertion',Origin:origin};
+const jwt={'Cf-Access-Jwt-Assertion':ownerToken,Origin:origin};
+test.beforeEach(resetCerts);
 
 test('Cloudflare Access is required before Pages touches private Worker binding',async()=>{
  let called=false;
@@ -246,4 +248,41 @@ test('Pages explicitly authorizes AFL++ with owner Access, never accepts extra p
  const bad=new Request(origin+'/api/terminal/tools/install/execute',{method:'POST',headers:{...jwt,'Content-Type':'application/json'},body:JSON.stringify({tool_id:'aflpp',approval:'I_APPROVE_RAILWAY_TOOL_INSTALL',command:'id'})});
  assert.equal((await handleTerminalFunction(context(bad,fetcher),'tools/install/execute')).status,400);
  assert.equal(calls,1);
+});
+
+test('forged, login-page meta and unsigned assertions never reach the private Worker binding',async()=>{
+ let called=0;
+ const fetcher=async()=>{called++;return new Response('{}');};
+ const forged=await mint({},{key:attackerPair.privateKey});
+ const meta=await mint({type:'meta'});
+ const expired=await mint({exp:Math.floor(Date.now()/1000)-3600});
+ for(const assertion of ['owner-access-test-assertion',forged,meta,expired]){
+  for(const route of ['session','tools/install/execute','tools/run','backup/latest']){
+   const req=new Request(origin+'/api/terminal/'+route,{method:'POST',
+    headers:{'Cf-Access-Jwt-Assertion':assertion,Origin:origin,'Content-Type':'application/json'},
+    body:JSON.stringify({tool_id:'frida',approval:'I_APPROVE_RAILWAY_TOOL_INSTALL'})});
+   assert.equal((await handleTerminalFunction(context(req,fetcher),route)).status,401,route);
+  }
+  const ws=request('ws','GET',{'Cf-Access-Jwt-Assertion':assertion,Origin:origin,Upgrade:'websocket',
+   'Sec-WebSocket-Protocol':'wormstar-terminal, ticket.'+'a'.repeat(82)});
+  assert.equal((await handleTerminalFunction(context(ws,fetcher),'ws')).status,401);
+ }
+ assert.equal(called,0);
+});
+
+test('bridge fails closed (503) when Access signing keys are unreachable',async()=>{
+ let called=0;
+ certs.fail=true;
+ const res=await handleTerminalFunction(context(request('session','POST',jwt),async()=>{called++;return new Response('{}');}),'session');
+ assert.equal(res.status,503);
+ assert.equal((await res.json()).code,'ACCESS_CERTS_UNAVAILABLE');
+ assert.equal(called,0);
+});
+
+test('optional ACCESS_ALLOWED_EMAILS denies other Access identities',async()=>{
+ let called=0;
+ const fetcher=async()=>{called++;return new Response('{}');};
+ const res=await handleTerminalFunction(context(request('session','POST',jwt),fetcher,{ACCESS_ALLOWED_EMAILS:'other@example.test'}),'session');
+ assert.equal(res.status,403);
+ assert.equal(called,0);
 });

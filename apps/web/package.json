@@ -12,7 +12,7 @@
     "test:markdown": "node --test tests/markdown-render.test.mjs",
     "test:bundle": "node --test tests/bundle-budget.test.mjs",
     "test:ai-core": "node --test tests/ai-core.test.mjs",
-    "test:terminal": "node --test tests/terminal-bridge.test.mjs tests/terminal-ansi.test.mjs"
+    "test:terminal": "node --test tests/access-jwt.test.mjs tests/terminal-bridge.test.mjs tests/terminal-ansi.test.mjs"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
