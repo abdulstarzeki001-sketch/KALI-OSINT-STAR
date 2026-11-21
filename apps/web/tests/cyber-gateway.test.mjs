@@ -32,12 +32,16 @@ test('blocks forged or missing identity and hostile hosts before gateway',async(
   }
   assert.equal(f.seen.length,0);
 });
-test('missing or insecure gateway configuration fails closed',async()=>{
+test('missing or insecure gateway configuration only permits local audit',async()=>{
   const f=fixture();
   for(const env of [{}, {...ENV,STAR_CYBER_GATEWAY_TOKEN:'short'},
     {...ENV,STAR_CYBER_GATEWAY_URL:'http://localhost:3000/'}]){
-    const r=await handleCyberPost({request:req(),env},f.fetchUpstream);
-    assert.equal(r.status,503);
+    const safe=await handleCyberPost({request:req(),env},f.fetchUpstream);
+    assert.equal(safe.status,200);
+    assert.equal((await safe.json()).findings[0].id,'UNSAFE_EVAL');
+    const remote=await handleCyberPost({request:req({action:'review',kind:'code',
+      artifact:'eval(userInput)',model:'qwen-coder'}),env},f.fetchUpstream);
+    assert.equal(remote.status,503);
   }
   assert.equal(f.seen.length,0);
 });
