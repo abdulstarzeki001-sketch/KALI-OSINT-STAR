@@ -10,5 +10,5 @@ COPY --chown=node:node start.sh tailnet-provider.mjs ./
 USER node
 ENV PORT=8080
 EXPOSE 8080
-ENTRYPOINT ["/sbin/tini","-g","--"]
+ENTRYPOINT ["/sbin/tini","-s","-g","--"]
 CMD ["/bin/sh","/app/start.sh"]
