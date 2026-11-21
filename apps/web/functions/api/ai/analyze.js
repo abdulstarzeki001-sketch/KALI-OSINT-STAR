@@ -6,6 +6,13 @@ import {PRIVATE_MODEL,requestPrivateCompletion} from './railway-gateway.js';
 // This Function does not forward requests to Kali or accept execution commands.
 const HOST = 'kali-osint-star.pages.dev';
 function json(value,status=200){return new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer'}})}
+// Forward only numeric provider usage, never raw provider metadata.
+export function providerUsage(input){
+ if(!input||typeof input!=='object'||Array.isArray(input))return null;
+ const {prompt_tokens,completion_tokens,total_tokens}=input;
+ if(![prompt_tokens,completion_tokens,total_tokens].every(n=>Number.isSafeInteger(n)&&n>=0&&n<=10000000)||total_tokens!==prompt_tokens+completion_tokens)return null;
+ return {prompt_tokens,completion_tokens,total_tokens};
+}
 async function privateReport(request,env,report,question,fetchUpstream){
  const parts=hideCommonSecrets(report).match(/[\s\S]{1,2000}/gu)||[];
  const messages=[
@@ -20,7 +27,8 @@ async function privateReport(request,env,report,question,fetchUpstream){
  const result=await response.json();
  const analysis=result?.choices?.[0]?.message?.content;
  if(typeof analysis!=='string'||!analysis.trim())return json({error:'Private model reply unavailable'},503);
- return json({status:'completed',analysis,model:PRIVATE_MODEL,notice:'Verify the analysis against the original report.'});
+ const usage=providerUsage(result?.usage);
+ return json({status:'completed',analysis,model:PRIVATE_MODEL,notice:'Verify the analysis against the original report.',...(usage?{usage}:{})});
 }
 export async function handleAnalyzePost({request,env},fetchUpstream=globalThis.fetch){
  const url=new URL(request.url);
