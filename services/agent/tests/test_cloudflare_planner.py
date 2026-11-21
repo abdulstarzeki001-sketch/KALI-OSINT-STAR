@@ -32,7 +32,7 @@ async def test_model_adapter_returns_real_http_plan_without_executing_it():
 
 @pytest.mark.asyncio
 async def test_access_redirect_and_absent_token_fail_closed():
-    planner=CloudflarePlanner('https://kali-osint-star.pages.dev/api/ai/chat',
+    planner=CloudflarePlanner('https://kali-osint-star.pages.dev/api/agent/inference',
        transport=httpx.MockTransport(lambda request:httpx.Response(
            302,headers={'location':'/cdn-cgi/access/login'})))
     with pytest.raises(ValueError,match='Access rejected'):

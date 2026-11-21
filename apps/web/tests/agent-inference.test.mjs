@@ -26,6 +26,6 @@ test('no binding or malformed text returns failure without fabricated AI reply',
  const linked=await mint({aud:[AUD]});
  assert.equal((await handleInference({request:req(linked),env:{}},null)).status,503);
  assert.equal((await handleInference({request:req(linked,{prompt:'x'.repeat(5000)}),env:{}},
-   {fetch:async()=>{throw Error('must not call');}})).status,413);
+   {fetch:async()=>{throw Error('must not call');}})).status,422);
  assert.equal((await onRequestGet()).status,405);
 });
