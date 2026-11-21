@@ -65,3 +65,17 @@ jobs:
         run: |
           python -m compileall -q services/agent
           python -m pytest -q services/agent/tests
+
+  vps-installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate Ubuntu bootstrap shell syntax
+        run: bash -n deploy/cpu-ai/install-ubuntu.sh
+      - name: Validate Compose model and agent configurations
+        env:
+          STAR_CPU_API_KEY: secure-unit-test-cpu-key-not-a-real-secret-00000
+          STAR_AGENT_API_KEY: secure-unit-test-agent-key-not-a-real-secret-0000
+        run: |
+          mkdir -p deploy/cpu-ai/workspace
+          docker compose -f deploy/cpu-ai/compose.yaml -f deploy/cpu-ai/compose.agent.yaml config --quiet
