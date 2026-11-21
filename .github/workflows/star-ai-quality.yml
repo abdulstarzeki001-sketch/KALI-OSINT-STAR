@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [star-ai-opencode-local]
+    branches: [main, star-ai-opencode-local, star-ai-verified-engineering]
 permissions:
   contents: read
 jobs:
@@ -22,4 +22,4 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
-      - run: node --experimental-strip-types --test apps/web/tests/quality-report.test.mjs
+      - run: node --experimental-strip-types --test apps/web/tests/quality-report.test.mjs apps/web/tests/verified-benchmark.test.mjs
