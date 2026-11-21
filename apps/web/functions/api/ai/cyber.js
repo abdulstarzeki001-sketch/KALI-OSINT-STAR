@@ -2,6 +2,7 @@ import {auditLocally,hideCommonSecrets} from './local-audit.js';
 import {verifyAccessRequest,accessFailureStatus} from '../../../access-jwt.js';
 
 const HOST='kali-osint-star.pages.dev';
+const DEFAULT_GATEWAY='https://star-ai-cyber-gateway-production.up.railway.app';
 const KINDS=new Set(['code','config','headers','logs','report']);
 const HEADERS={'cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer'};
 function json(value,status=200){
@@ -24,9 +25,14 @@ export async function handleCyberPost({request,env},fetchUpstream=globalThis.fet
   const auth=await verifyAccessRequest(request,env);
   if(!auth.ok)return json({error:'Cloudflare Access verification failed'},accessFailureStatus(auth.reason));
   if(!request.headers.get('content-type')?.toLowerCase().startsWith('application/json'))return json({error:'JSON required'},415);
-  const backend=gatewayURL(env);
+  // If no custom origin/secret is configured, use the project's pinned Railway
+  // gateway and relay the already verified Cloudflare Access app JWT.
+  // Railway independently verifies signature, issuer, audience, expiry and type.
+  const backend=Object.hasOwn(env,'STAR_CYBER_GATEWAY_URL')?gatewayURL(env):DEFAULT_GATEWAY;
   const token=env.STAR_CYBER_GATEWAY_TOKEN;
-  const gatewayReady=Boolean(backend&&typeof token==='string'&&token.length>=32);
+  const sharedToken=typeof token==='string'&&token.length>=32?token:null;
+  const gatewayReady=Boolean(backend);
+  const bearer=sharedToken||request.headers.get('Cf-Access-Jwt-Assertion');
   let data;
   try {
     const raw=await request.text();
@@ -52,13 +58,14 @@ export async function handleCyberPost({request,env},fetchUpstream=globalThis.fet
     default:
       return json({error:'Unknown action'},422);
   }
-  // Built-in Cloudflare Workers AI remains available when Railway models are not configured.
-  if(data.action==='models'&&!gatewayReady) {
-    return json({object:'list',data:env.STAR_AI?[{id:'llama-cloudflare',object:'model',owned_by:'cloudflare'}]:[]});
-  }
-  if(data.action==='audit'&&!gatewayReady) {
-    const result=auditLocally(data.artifact,data.kind);
-    return result?json(result):json({error:'Invalid audit'},422);
+  // An invalid explicitly-configured Gateway URL never falls back to another host.
+  if(!gatewayReady) {
+    if(data.action==='models')
+      return json({object:'list',data:env.STAR_AI?[{id:'llama-cloudflare',object:'model',owned_by:'cloudflare'}]:[]});
+    if(data.action==='audit'){
+      const result=auditLocally(data.artifact,data.kind);
+      return result?json(result):json({error:'Invalid audit'},422);
+    }
   }
   if(data.action==='review'&&data.model==='llama-cloudflare') {
     if(!env.STAR_AI||typeof env.STAR_AI.fetch!=='function')
@@ -84,7 +91,7 @@ export async function handleCyberPost({request,env},fetchUpstream=globalThis.fet
   try{
     const result=await fetchUpstream(backend+path,{
       method,headers:{
-        'authorization':'Bearer '+token,
+        'authorization':'Bearer '+bearer,
         ...(payload?{'content-type':'application/json'}:{})
       },
       ...(payload?{body:JSON.stringify(payload)}:{}),
@@ -93,8 +100,20 @@ export async function handleCyberPost({request,env},fetchUpstream=globalThis.fet
     if(result.status>=300&&result.status<400)return json({error:'Backend redirects are not allowed'},502);
     const contentType=result.headers.get('content-type')||'';
     if(!contentType.includes('application/json'))return json({error:'Backend did not return JSON'},502);
+    if(data.action==='models'&&env.STAR_AI){
+      if(!result.ok)return json({object:'list',data:[{id:'llama-cloudflare',object:'model',owned_by:'cloudflare'}]});
+      const models=await result.json();
+      const rows=Array.isArray(models.data)?models.data:[];
+      return json({object:'list',data:[...rows,{id:'llama-cloudflare',object:'model',owned_by:'cloudflare'}]});
+    }
+    if(!result.ok&&data.action==='audit'&&result.status>=500)
+      return json(auditLocally(data.artifact,data.kind));
     return new Response(result.body,{status:result.status,headers:{...HEADERS,'content-type':'application/json; charset=utf-8'}});
-  }catch{return json({error:'Cyber AI Gateway is unavailable'},503);}
+  }catch{
+    if(data.action==='audit')return json(auditLocally(data.artifact,data.kind));
+    if(data.action==='models'&&env.STAR_AI)return json({object:'list',data:[{id:'llama-cloudflare',object:'model',owned_by:'cloudflare'}]});
+    return json({error:'Cyber AI Gateway is unavailable'},503);
+  }
 }
 export async function onRequestPost(context){return handleCyberPost(context);}
 export async function onRequestGet(){return json({error:'POST only'},405);}

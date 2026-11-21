@@ -1,4 +1,5 @@
 import {createHash, timingSafeEqual} from 'node:crypto';
+import {createAccessVerifier} from './access-jwt.mjs';
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -168,6 +169,7 @@ async function invokeProvider(model,body,fetchImpl) {
 }
 export function createGateway({env=process.env,fetchImpl=globalThis.fetch,now=()=>Date.now()}={}) {
   const models=modelCatalog(env);
+  const verifyAccessToken=createAccessVerifier({env,fetchImpl,now});
   const times=[];
   let inflight=0;
   return async function handle(request) {
@@ -175,7 +177,9 @@ export function createGateway({env=process.env,fetchImpl=globalThis.fetch,now=()
     const ready=models.filter(x=>x.key).length;
     if(pathname==='/healthz'&&request.method==='GET')
       return json({status:'ok',service:'star-ai-cyber-gateway',local_audit:true,ai_ready:ready>0,configured_models:ready});
-    if(!authorized(request,env.STAR_GATEWAY_TOKEN))return fail(401,'unauthorized');
+    const bearer=/^Bearer ([^\s]+)$/i.exec(request.headers.get('authorization')||'')?.[1]||'';
+    if(!authorized(request,env.STAR_GATEWAY_TOKEN)&&!(await verifyAccessToken(bearer)))
+      return fail(401,'unauthorized');
     if(pathname==='/v1/models'&&request.method==='GET')
       return json({object:'list',data:models.filter(x=>x.key).map(x=>({id:x.id,object:'model',owned_by:'star-ai'}))});
     if(!['/v1/chat/completions','/v1/security/audit','/v1/security/review'].includes(pathname))
