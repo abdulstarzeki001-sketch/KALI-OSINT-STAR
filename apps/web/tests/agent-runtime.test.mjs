@@ -54,7 +54,7 @@ test('approvals relay only explicit boolean; malformed requests blocked',async()
 test('other targets, excessive input and backend redirects are blocked',async()=>{
  const f=mock();
  assert.equal((await handleAgent({request:req('/api/agent/tasks',{prompt:'x'.repeat(4001)}),env:{}},'submit',f.fetch)).status,422);
- assert.equal((await handleAgent({request:req('/api/agent/tasks'),env:{}},'shell',f.fetch)).status,404);
+ assert.equal((await handleAgent({request:req('/api/agent/tasks'),env:{}},'shell',f.fetch)).status,405);
  assert.equal(f.calls.length,0);
  assert.equal((await handleAgent({request:req('/api/agent/health'),env:{}},'health',
   async()=>new Response(null,{status:302,headers:{location:'https://evil.test'}}))).status,502);
