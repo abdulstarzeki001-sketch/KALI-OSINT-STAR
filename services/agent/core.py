@@ -77,6 +77,8 @@ class Task:
     page:Any=None
     playwright:Any=None
     running:bool=False
+    access_token:str|None=None   # transient owner token; NEVER serialized or shown in task log
+    owner_id:str=''             # bind approval and status to the submitting Access identity
     def public(self):
         # Pending edits are shown for human inspection, never persisted to audit.
         preview=None
@@ -301,11 +303,16 @@ class Engine:
     def add_event(self,t:Task,kind:str,detail:Any):
         t.events.append({'ts':int(time.time()),'kind':kind,'detail':redact(detail)})
         self.store.save(t)
-    async def submit(self,prompt:str)->Task:
+    async def submit(self,prompt:str,access_token:str|None=None,owner_id:str='')->Task:
         if not isinstance(prompt,str) or not prompt.strip() or len(prompt)>4000:
             raise ValueError('Task must contain 1-4000 characters')
+        if getattr(self.model,'requires_owner_access',False) and not access_token:
+            raise ValueError('A signed Cloudflare Access session is required for cloud inference')
+        active=sum(t.status in ('queued','running','approval_required') for t in self.tasks.values())
+        if active>=3:raise ValueError('Agent capacity reached: finish or reject an existing task')
         t=Task(id=secrets.token_hex(12),prompt=prompt.strip(),
-               messages=[{'role':'system','content':SYSTEM},{'role':'user','content':prompt.strip()}])
+               messages=[{'role':'system','content':SYSTEM},{'role':'user','content':prompt.strip()}],
+               access_token=access_token,owner_id=owner_id)
         self.tasks[t.id]=t;self.add_event(t,'task_created',{'prompt_length':len(prompt)})
         asyncio.create_task(self.drive(t))
         return t
@@ -318,7 +325,10 @@ class Engine:
             while t.steps<self.max_steps:
                 if not t.calls:
                     t.steps+=1
-                    message=await self.model.complete(t.messages)
+                    if getattr(self.model,'requires_owner_access',False):
+                        message=await self.model.complete(t.messages,t.access_token)
+                    else:
+                        message=await self.model.complete(t.messages)
                     calls=message.get('tool_calls') or []
                     if not calls:
                         t.result=str(message.get('content') or 'No answer from model')[:8000]
@@ -351,6 +361,7 @@ class Engine:
         finally:
             t.running=False;self.store.save(t)
             if t.status in ('completed','failed','rejected'):
+                t.access_token=None
                 await self.executor.cleanup(t)
     def tool_reply(self,t:Task,call:dict,name:str,result:str):
         t.messages.append({'role':'tool','tool_call_id':call.get('id','missing'),
@@ -360,14 +371,18 @@ class Engine:
         try:res=await self.executor.invoke(t,name,args)
         except Exception as e:res='Tool error: '+str(e)
         self.tool_reply(t,call,name,res)
-    async def decide(self,id:str,approve:bool):
+    async def decide(self,id:str,approve:bool,access_token:str|None=None):
         t=self.tasks.get(id)
         if not t or t.running or t.status!='approval_required' or not t.pending:
             raise ValueError('No pending approval for this task')
+        if getattr(self.model,'requires_owner_access',False):
+            if not access_token:raise ValueError('An active owner Access session is required to approve actions')
+            t.access_token=access_token
         p=t.pending;t.pending=None
         if not approve:
             t.status='rejected';t.result='Owner rejected the proposed action.'
             self.add_event(t,'rejected',{'tool':p['name']})
+            t.access_token=None
             await self.executor.cleanup(t)
             return t
         call=t.calls.pop(0)
