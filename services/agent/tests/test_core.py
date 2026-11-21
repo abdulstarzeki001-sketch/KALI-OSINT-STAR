@@ -19,6 +19,24 @@ def test_paths_and_secrets(tmp_path):
     assert 'README.md' in ex.list_files()
     assert 'README.md:1' in ex.search_text('hello')
 
+def test_symlink_secret_read_blocked(tmp_path):
+    ex=executor(tmp_path)
+    (ex.root/'.env.private').write_text('never-read-me')
+    (ex.root/'public.txt').symlink_to(ex.root/'.env.private')
+    with pytest.raises(ValueError):ex.read_file('public.txt')
+    with pytest.raises(ValueError):ex.read_file('.env.private')
+    with pytest.raises(ValueError):ex.read_file('my-secret-token.txt')
+
+
+def test_pending_approval_previews_actual_changes():
+    t=Task(id='test',prompt='edit',status='approval_required',
+           pending={'id':'call1','name':'replace_text',
+                    'arguments':{'path':'README.md','old':'before','new':'after'}})
+    p=t.public()['pending']
+    assert p['arguments']['old']=='before'
+    assert p['arguments']['new']=='after'
+
+
 def test_allowlisted_commands(tmp_path):
     ex=executor(tmp_path)
     assert ex.command_policy(['git','status'])=='auto'
