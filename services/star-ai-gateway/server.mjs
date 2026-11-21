@@ -2,9 +2,10 @@ import {createServer} from 'node:http';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {createGateway} from './gateway.mjs';
+import {tailnetProvider} from './tailnet-provider.mjs';
 
 let gateway;
-try {gateway=createGateway();}catch(error) {
+try {gateway=createGateway(tailnetProvider(process.env));}catch(error) {
   console.error('Gateway configuration invalid:',error.message);
   process.exit(1);
 }
