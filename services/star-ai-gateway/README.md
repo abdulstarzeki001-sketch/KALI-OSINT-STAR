@@ -26,3 +26,7 @@ Requests are restricted to 32 KiB, 20 requests/minute per process, at most two s
 ## Validation
 
 Run npm test from this directory. CI runs these tests on PRs. For live testing, first configure a paid or available upstream model and send an authenticated test message; do not claim readiness from CI or /healthz alone.
+
+## Cloudflare Access JWT integration
+
+For the user's existing KALI-OSINT-STAR Pages frontend, the gateway can validate the Cloudflare Access app JWT forwarded from the server-side Pages Function. Configure `STAR_ACCESS_TEAM_DOMAIN` and `STAR_ACCESS_AUD` on Railway using the same public team domain and application AUD as `apps/web/access-jwt.js`. Optionally limit identities via `STAR_ACCESS_ALLOWED_EMAILS`. This **does not** remove the strong separate `STAR_GATEWAY_TOKEN` method used for owner CLI access. The Pages Function verifies the same JWT first, then forwards it only to the pinned Railway HTTPS hostname. No gateway secret is injected into Vite or exposed to Safari. Live model inference still requires upstream provider keys.

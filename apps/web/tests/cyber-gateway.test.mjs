@@ -86,3 +86,19 @@ test('Cloudflare fallback exposes its model only when service binding exists',as
   assert.equal((await r.json()).analysis,'Cyber advice');
   assert.equal(f.seen.length,0);
 });
+
+test('default Railway gateway receives the verified owner Access JWT, not an invented token',async()=>{
+  const f=fixture();
+  const resp=await handleCyberPost({request:req({action:'audit',kind:'code',artifact:'eval(x)'}),env:{}},f.fetchUpstream);
+  assert.equal(resp.status,200);
+  assert.equal(f.seen[0].url,'https://star-ai-cyber-gateway-production.up.railway.app/v1/security/audit');
+  assert.equal(f.seen[0].options.headers.authorization,'Bearer '+ownerToken);
+});
+test('Cloudflare fallback is included even if the independent Railway gateway responds with no model keys',async()=>{
+  const f=fixture();
+  const env={STAR_AI:{fetch:async()=>new Response(JSON.stringify({reply:'Cloudflare answer'}),{headers:{'content-type':'application/json'}})}};
+  const r=await handleCyberPost({request:req({action:'models'}),env},f.fetchUpstream);
+  assert.equal(r.status,200);
+  const out=await r.json();
+  assert.equal(out.data[0].id,'llama-cloudflare');
+});
