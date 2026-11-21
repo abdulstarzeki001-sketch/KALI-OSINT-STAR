@@ -12,19 +12,33 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from .core import Executor, Model, Engine, Store
+from .cloudflare_planner import CloudflarePlanner
+from .access_auth import AccessVerifier
 
 def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
     secret=secret if secret is not None else os.getenv('STAR_AGENT_API_KEY','')
     if len(secret)<32 or secret.startswith('CHANGE_ME'):
         raise RuntimeError('STAR_AGENT_API_KEY must contain 32+ random characters')
+    access_verifier=AccessVerifier(
+        os.getenv('STAR_AGENT_ACCESS_TEAM_DOMAIN',''),
+        os.getenv('STAR_AGENT_ACCESS_AUD',''),
+        os.getenv('STAR_AGENT_ACCESS_ALLOWED_EMAILS',''))
     if engine is None:
-        cpu_key=os.getenv('STAR_CPU_API_KEY','')
-        if len(cpu_key)<32:raise RuntimeError('STAR_CPU_API_KEY is required')
         state=Path(os.getenv('STAR_AGENT_STATE_DIR','/data'))
         executor=Executor(Path(os.getenv('STAR_AGENT_WORKSPACE','/workspace')),state,
                           os.getenv('STAR_AGENT_BROWSER_HOSTS','').split(','))
-        model=Model(os.getenv('STAR_MODEL_URL','http://star-ai-cpu:8080/v1'),
-                    cpu_key,os.getenv('STAR_MODEL_ID','star-ai-cpu'))
+        backend=os.getenv('STAR_MODEL_BACKEND','cpu').strip().lower()
+        if backend=='cloudflare':
+            if not access_verifier.enabled:
+                raise RuntimeError('Cloudflare Access verification must be configured for cloud mode')
+            model=CloudflarePlanner(os.getenv('STAR_CLOUDFLARE_MODEL_URL',
+                'https://kali-osint-star.pages.dev/api/ai/chat'))
+        elif backend=='cpu':
+            cpu_key=os.getenv('STAR_CPU_API_KEY','')
+            if len(cpu_key)<32:raise RuntimeError('STAR_CPU_API_KEY is required in CPU model mode')
+            model=Model(os.getenv('STAR_MODEL_URL','http://star-ai-cpu:8080/v1'),
+                        cpu_key,os.getenv('STAR_MODEL_ID','star-ai-cpu'))
+        else:raise RuntimeError('STAR_MODEL_BACKEND must be cloudflare or cpu')
         engine=Engine(executor,model,Store(state/'agent-tasks.sqlite'))
     app=FastAPI(title='STAR AI CPU Agent',docs_url=None,openapi_url=None,redoc_url=None)
     app.state.engine=engine
@@ -49,11 +63,27 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
         res.headers['Content-Security-Policy']="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; base-uri 'none'; form-action 'self'"
         return res
 
-    def auth(req:Request):
+    async def auth(req:Request):
         value=req.headers.get('authorization','')
         import secrets
-        if not value.startswith('Bearer ') or not secrets.compare_digest(value[7:],secret):
+        if not value.startswith('Bearer '):
             raise HTTPException(401,'Invalid agent access token')
+        token=value[7:]
+        if len(token)<=256 and secrets.compare_digest(token,secret):
+            return {'owner':'admin','token':None}
+        identity=await access_verifier.verify(token)
+        if identity:
+            return {'owner':identity['sub'] or identity['email'],'token':token}
+        raise HTTPException(401,'Invalid signed Access session')
+
+    def owner_check(id:str,session:dict):
+        current=engine.tasks.get(id)
+        if current and current.owner_id and session['owner']!='admin' and current.owner_id!=session['owner']:
+            raise HTTPException(403,'Task belongs to another owner')
+        if not current and session['owner']!='admin':
+            # Recovered tasks have no live owner approval context. Do not leak
+            # them to a different browser session after container restart.
+            raise HTTPException(404,'Task not active')
 
     @app.get('/',response_class=HTMLResponse)
     async def home():
@@ -61,45 +91,51 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
     @app.get('/health')
     async def health():
         return {'ok':True,'service':'star-agent-cpu','tool_mode':'approval-gated',
-                'model_endpoint_configured':True,'allowed_host_count':len(engine.executor.hosts)}
+                'model_endpoint_configured':True,'model_backend':(
+                  'cloudflare' if getattr(engine.model,'requires_owner_access',False) else 'cpu'),
+                'live_inference_tested':False,'allowed_host_count':len(engine.executor.hosts)}
     @app.post('/api/tasks',status_code=202)
     async def submit(req:Request):
-        auth(req)
+        session=await auth(req)
         try:
             data=await req.json()
-            task=await engine.submit(data.get('prompt',''))
+            task=await engine.submit(data.get('prompt',''),
+                access_token=session['token'],owner_id=session['owner'])
             return task.public()
         except (ValueError,AttributeError,TypeError) as exc:
             raise HTTPException(422,str(exc))
     @app.get('/api/tasks/{id}')
     async def status(id:str,req:Request):
-        auth(req)
+        session=await auth(req)
         if not re.fullmatch('[0-9a-f]{24}',id):raise HTTPException(404,'Task missing')
+        owner_check(id,session)
         obj=engine.fetch(id)
         if obj is None:raise HTTPException(404,'Task missing')
         return obj
     @app.post('/api/tasks/{id}/decide')
     async def decide(id:str,req:Request):
-        auth(req)
+        session=await auth(req)
         if not re.fullmatch('[0-9a-f]{24}',id):raise HTTPException(404,'Task missing')
+        owner_check(id,session)
         try:
             d=await req.json()
             if type(d.get('approve')) is not bool:raise ValueError('approve must be boolean')
-            return (await engine.decide(id,d['approve'])).public()
+            return (await engine.decide(id,d['approve'],access_token=session['token'])).public()
         except (ValueError,TypeError) as e:
             raise HTTPException(409,str(e))
     @app.get('/api/tasks/{id}/screenshot')
     async def screenshot(id:str,req:Request):
-        auth(req)
+        session=await auth(req)
         if not re.fullmatch('[0-9a-f]{24}',id) or not engine.fetch(id):
             raise HTTPException(404,'Task missing')
+        owner_check(id,session)
         image=engine.executor.state/'screenshots'/f'{id}.png'
         if not image.is_file():raise HTTPException(404,'Screenshot missing')
         return FileResponse(image,media_type='image/png',headers={'Cache-Control':'no-store'})
 
     @app.post('/mcp')
     async def mcp(req:Request):
-        auth(req)
+        session=await auth(req)
         try:
             rpc=await req.json()
             method=rpc.get('method')
@@ -119,10 +155,14 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
                 params=rpc.get('params') or {}
                 arguments=params.get('arguments') or {}
                 if params.get('name')=='star_agent_submit':
-                    t=await engine.submit(arguments.get('prompt',''))
+                    t=await engine.submit(arguments.get('prompt',''),access_token=session['token'],owner_id=session['owner'])
                     data=t.public()
                 elif params.get('name')=='star_agent_status':
-                    data=engine.fetch(arguments.get('task_id',''))
+                    task_id=arguments.get('task_id','')
+                    if not isinstance(task_id,str) or not re.fullmatch('[0-9a-f]{24}',task_id):
+                        raise ValueError('Invalid task ID')
+                    owner_check(task_id,session)
+                    data=engine.fetch(task_id)
                     if data is None:raise ValueError('Unknown task')
                 else:raise ValueError('Unknown tool')
                 result={'content':[{'type':'text','text':__import__('json').dumps(data,ensure_ascii=False)}]}
