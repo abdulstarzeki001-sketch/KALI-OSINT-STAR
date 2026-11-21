@@ -1,4 +1,11 @@
+# Python Playwright runtime with Chromium, plus Node 22 for TypeScript/Vite checks.
+FROM node:22-bookworm-slim AS node-tools
 FROM mcr.microsoft.com/playwright/python:v1.56.0-noble
+COPY --from=node-tools /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-tools /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt \
