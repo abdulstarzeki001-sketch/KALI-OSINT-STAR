@@ -75,8 +75,14 @@ class Task:
     playwright:Any=None
     running:bool=False
     def public(self):
+        # Pending edits are shown for human inspection, never persisted to audit.
+        preview=None
+        if self.pending:
+            preview={'id':self.pending.get('id'),'name':self.pending.get('name'),
+                     'arguments':{k:(redact(v[:8000]) if isinstance(v,str) else redact(v))
+                                  for k,v in self.pending.get('arguments',{}).items()}}
         return {'id':self.id,'status':self.status,'result':redact(self.result),
-                'events':redact(self.events[-60:]),'pending':redact(self.pending),
+                'events':redact(self.events[-60:]),'pending':preview,
                 'steps':self.steps,'created':self.created}
 
 class Store:
@@ -105,13 +111,20 @@ class Executor:
     def file(self,name:str,create:bool=False)->Path:
         if not isinstance(name,str) or not name or len(name)>220 or name.startswith(('~','/')):
             raise ValueError('Invalid relative file path')
-        p=(self.root/name).resolve()
-        if not p.is_relative_to(self.root) or p==self.root: raise ValueError('Path outside workspace')
+        raw=self.root/name
         parts=Path(name).parts
-        if any(x in SKIP_DIRS or x in BAD_NAMES for x in parts) or p.suffix.lower() in BAD_SUFFIX:
+        if any(x in ('..','') or x in SKIP_DIRS or x in BAD_NAMES or
+               x.startswith('.env') or re.search(r'(secret|credential|token)',x,re.I)
+               for x in parts):
             raise ValueError('Sensitive or excluded path')
+        current=self.root
+        for part in parts:
+            current=current/part
+            if current.is_symlink():raise ValueError('Symlink refused')
+        p=raw.resolve()
+        if not p.is_relative_to(self.root) or p==self.root: raise ValueError('Path outside workspace')
+        if p.suffix.lower() in BAD_SUFFIX:raise ValueError('Sensitive file extension')
         if create and p.exists(): raise ValueError('Target file already exists')
-        if p.is_symlink():raise ValueError('Symlink refused')
         return p
     def allowed_url(self,url:str)->bool:
         try:
@@ -194,7 +207,7 @@ class Executor:
     def replace_text(self,path:str,old:str,new:str)->str:
         p=self.file(path)
         if not p.is_file() or p.stat().st_size>64000:raise ValueError('File is missing or too large')
-        if not old or not isinstance(new,str) or len(new)>30000:raise ValueError('Invalid replacement')
+        if not old or len(old)>8000 or not isinstance(new,str) or len(new)>8000:raise ValueError('Replacement must fit full owner review')
         raw=p.read_text(encoding='utf-8')
         if raw.count(old)!=1:raise ValueError('Old fragment must occur exactly once')
         updated=raw.replace(old,new,1)
@@ -202,7 +215,7 @@ class Executor:
         return f'Updated {p.relative_to(self.root)} ({len(updated)} characters)'
     def create_file(self,path:str,content:str)->str:
         p=self.file(path,create=True)
-        if not isinstance(content,str) or len(content)>32000:raise ValueError('Invalid file content')
+        if not isinstance(content,str) or len(content)>8000:raise ValueError('File content must fit full owner review')
         p.parent.mkdir(parents=True,exist_ok=True)
         with p.open('x',encoding='utf-8') as f:f.write(content)
         return f'Created {p.relative_to(self.root)}'
