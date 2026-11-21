@@ -1,0 +1,4 @@
+.env
+*.gguf
+model-cache/
+__pycache__/
