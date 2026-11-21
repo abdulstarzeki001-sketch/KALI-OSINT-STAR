@@ -36,6 +36,7 @@ export default function CodingCopilotPanel({name,source,onApply,onFlow,disabled}
   try{
    checkShare(source);
    const data=await ask('qwen3-coder-vast',proposalMessages(name,source,task),abort.signal);
+   if(abort.signal.aborted)return;
    const next=parseProposal(data,name,source);
    setProposal(next);onFlow({type:'proposal',name:next.name,base:next.base,candidate:next.source});
   }catch(e){if(!abort.signal.aborted)setError(e instanceof Error?e.message:'تعذر إنشاء المقترح');else setError('تم إلغاء الطلب أو انتهت مهلته')}
@@ -46,7 +47,7 @@ export default function CodingCopilotPanel({name,source,onApply,onFlow,disabled}
   setReviewConsent(false);setApproval(false);setReview('');setError('');
   const abort=new AbortController();controller.current=abort;setBusy(true);
   const timer=window.setTimeout(()=>abort.abort(),90000);
-  try{setReview(parseAdvisory(await ask('llama-cloudflare',reviewMessages(proposal),abort.signal)));onFlow({type:'review',name:proposal.name,base:proposal.base,candidate:proposal.source})}
+  try{const data=await ask('llama-cloudflare',reviewMessages(proposal),abort.signal);if(abort.signal.aborted)return;setReview(parseAdvisory(data));onFlow({type:'review',name:proposal.name,base:proposal.base,candidate:proposal.source})}
   catch(e){setError(e instanceof Error?e.message:'تعذر إجراء المراجعة')}
   finally{window.clearTimeout(timer);controller.current=null;setBusy(false)}
  }
