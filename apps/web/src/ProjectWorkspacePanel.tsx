@@ -35,7 +35,7 @@ export default function ProjectWorkspacePanel({evidence}:{evidence:ReturnType<ty
     const text=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());
     next=addFile(next,file.name,text);
    }
-   setFiles(next);if(batch.length)setActive(batch[0].name);
+   setFiles(next);if(batch.length){setActive(batch[0].name);setFlow(null);setConfirmReset(false);}
   }catch{setError('لم يتم استيراد الدفعة: اسم مكرر، نوع غير مدعوم، ترميز غير صالح أو تجاوز الحد.')}
   finally{setBusy(false);lock.current=false}
  }
@@ -63,7 +63,7 @@ export default function ProjectWorkspacePanel({evidence}:{evidence:ReturnType<ty
   {error&&<p className="ai-error" role="alert">{error}</p>}
   <p role="status">{files.length} / {MAX_WORKSPACE_FILES} ملفات · {files.filter(f=>f.original!==f.draft).length} ملفات معدلة</p>
   {files.length>0&&<>
-   <label>الملف الحالي<select value={active} disabled={busy} onChange={e=>{setActive(e.target.value);setConfirmReset(false)}}>{files.map(f=><option key={f.name} value={f.name}>{f.name}{f.original!==f.draft?' *':''}</option>)}</select></label>
+   <label>الملف الحالي<select value={active} disabled={busy} onChange={e=>{setActive(e.target.value);setConfirmReset(false);setFlow(null)}}>{files.map(f=><option key={f.name} value={f.name}>{f.name}{f.original!==f.draft?' *':''}</option>)}</select></label>
    {selected&&<>
     <label>محرر النص البرمجي<textarea dir="ltr" spellCheck={false} autoCorrect="off" autoCapitalize="off" rows={16} disabled={busy} value={selected.draft} onChange={e=>update(e.target.value)}/></label>
     <button type="button" disabled={busy} onClick={()=>save(selected.name,selected.draft)}>تنزيل الملف المعدل</button>
