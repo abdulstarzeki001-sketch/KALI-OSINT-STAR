@@ -1,5 +1,6 @@
 import {createHash, timingSafeEqual} from 'node:crypto';
 import {createAccessVerifier} from './access-jwt.mjs';
+import {deepAudit,toSarif,deepAuditLimits} from './deep-audit.mjs';
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -100,7 +101,7 @@ async function readBody(request) {
       const part=await reader.read();
       if(part.done)break;
       bytes+=part.value.byteLength;
-      if(bytes>32000) {await reader.cancel();return {error:fail(413,'body_too_large')};}
+      if(bytes>70000) {await reader.cancel();return {error:fail(413,'body_too_large')};}
       chunks.push(part.value);
     }
     const combined=new Uint8Array(bytes);
@@ -182,7 +183,8 @@ export function createGateway({env=process.env,fetchImpl=globalThis.fetch,now=()
       return fail(401,'unauthorized');
     if(pathname==='/v1/models'&&request.method==='GET')
       return json({object:'list',data:models.filter(x=>x.key).map(x=>({id:x.id,object:'model',owned_by:'star-ai'}))});
-    if(!['/v1/chat/completions','/v1/security/audit','/v1/security/review'].includes(pathname))
+    if(pathname==='/v1/security/capabilities'&&request.method==='GET')return json({deep_audit:true,sarif:true,limits:deepAuditLimits});
+    if(!['/v1/chat/completions','/v1/security/audit','/v1/security/review','/v1/security/deep-audit'].includes(pathname))
       return fail(404,'not_found');
     if(request.method!=='POST')return fail(405,'method_not_allowed');
     const windowStart=now()-60000;
@@ -195,6 +197,13 @@ export function createGateway({env=process.env,fetchImpl=globalThis.fetch,now=()
     if(pathname==='/v1/security/audit'){
       try{return json(auditArtifact(data?.artifact,data?.kind??'code'));}
       catch{return fail(422,'invalid_artifact');}
+    }
+    if(pathname==='/v1/security/deep-audit'){
+      try{
+        if(!data||typeof data!=='object'||(data.format!==undefined&&!['json','sarif'].includes(data.format)))return fail(422,'invalid_deep_audit');
+        const report=deepAudit(data.files);
+        return json(data.format==='sarif'?toSarif(report):report);
+      }catch{return fail(422,'invalid_deep_audit');}
     }
     if(inflight>=2)return fail(429,'too_many_concurrent_requests');
     let payload=data;

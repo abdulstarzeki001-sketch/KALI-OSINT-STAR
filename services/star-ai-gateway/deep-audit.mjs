@@ -83,7 +83,7 @@ export function toSarif(report){
   runs:[{tool:{driver:{name:'STAR Cyber Deep Audit',semanticVersion:'1.0.0',
     informationUri:'https://github.com/abdulstarzeki001-sketch/KALI-OSINT-STAR',
     rules:RULES.filter(r=>used.has(r[0])).map(r=>({id:r[0],name:r[1],
-      shortDescription:{text:r[1]},fullDescription:{text:r[7]},properties:{tags:['security',r[3]]}}))}},
+      shortDescription:{text:r[1]},fullDescription:{text:r[6]},properties:{tags:['security',r[3]]}}))}},
     originalUriBaseIds:{'%SRCROOT%':{uri:'file:///workspace/'}},
     results:report.findings.map(f=>({ruleId:f.id,
       level:f.severity==='critical'||f.severity==='high'?'error':'warning',
