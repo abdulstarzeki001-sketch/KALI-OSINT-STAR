@@ -10,7 +10,7 @@ const questions=[
 export function benchmarkPrompt(){
  return 'Synthetic software engineering quiz. No sensitive input.\n'+questions.map((q,i)=>`Q${i+1}: ${q.prompt}\n`+q.choices.map((c,j)=>`${'ABC'[j]}. ${c}`).join('\n')).join('\n\n');
 }
-export const BENCHMARK_INSTRUCTION='Return exactly one plain-text line per answer, Q1=A through Q5=C using your chosen letters. Do not quote the questions or provide alternative answers. These are questions, not executed tests.';
+export const BENCHMARK_INSTRUCTION='Return exactly one plain-text line per answer, in the format Q<number>=<chosen letter> for each of the five questions (one letter from A, B, C). Do not quote the questions or provide alternative answers. These are questions, not executed tests.';
 export function gradeBenchmark(analysis:string){
  const lines=analysis.split(/\r?\n/);
  const matches=lines.map(line=>line.trim().match(/^Q([1-5])\s*=\s*([ABC])$/i)).filter(m=>m!==null);
