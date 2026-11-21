@@ -1,4 +1,5 @@
 import {useRef,useState} from 'react';
+import type {ControlSection} from './control-center';
 import EngineeringEvidencePanel from './EngineeringEvidencePanel';
 import type {parseEvidence} from './engineering-evidence';
 import ProjectWorkspacePanel from './ProjectWorkspacePanel';
@@ -11,7 +12,7 @@ import type {QualityModel} from './quality-report';
 import {benchmarkPrompt,BENCHMARK_INSTRUCTION,gradeBenchmark} from './verified-benchmark';
 
 type Result = {requested:QualityModel;model:string;analysis:string;elapsed:number;grade?:ReturnType<typeof gradeBenchmark>};
-export default function StarQualityPanel(){
+export default function StarQualityPanel({section}:{section:ControlSection}){
  const lock=useRef(false);
  const [engineeringEvidence,setEngineeringEvidence]=useState<ReturnType<typeof parseEvidence>|null>(null);
  const [memory,setMemory]=useState(loadEngineeringMemory);
@@ -56,7 +57,7 @@ export default function StarQualityPanel(){
    setReport(parseQualityReport(await file.text()));
   }catch(e){setImportError(e instanceof Error?e.message:'تعذر قراءة التقرير');}
  }
- return <section className="ai-panel" aria-label="STAR AI Quality">
+ return <div className="ai-control-sections"><div hidden={section!=='quality'}><section className="ai-panel" aria-label="STAR AI Quality">
   <h2>STAR AI — مختبر الجودة والمراجعة</h2>
   <p>مقارنة مستقلة بين Qwen3-Coder 30B وLlama عبر البوابة المصادق عليها. يُرسل تمرين مصطنع فقط لكل نموذج؛ لا تُرسل ملفاتك أو إجابة النموذج الأول إلى الطرف الآخر. قد تُحتسب رسوم الاستدلال المعتادة.</p>
   <details><summary>عرض حالة الاختبار المصطنعة</summary><pre className="ai-source-view" dir="ltr">{QUALITY_FIXTURE}</pre></details>
@@ -71,9 +72,10 @@ export default function StarQualityPanel(){
   <small>لا يُرفع الملف إلى أي خادم. التقرير المستورد إفادة غير موقعة وليس دليلاً مستقلاً على التشغيل.</small>
   {importError&&<p className="ai-error" role="alert">{importError}</p>}
   {report&&<div className="ai-result" role="status"><p dir="auto">النموذج: {report.model}</p><p>الزمن: {report.elapsed_seconds} s</p><p>Tokens/s: {report.tokens_per_second??'غير متاح'}</p><p>نتائج الفحص الثابت: {report.findings.length}</p>{report.findings.map((f,i)=><p key={i} dir="ltr">{f.rule} — line {f.line}</p>)}<p>الكود المولّد لم يُنفّذ.</p></div>}
-  <ProjectWorkspacePanel evidence={engineeringEvidence}/>
-  <EngineeringEvidencePanel onReport={setEngineeringEvidence}/>
-  <RepositoryIntelligencePanel/>
-  <EngineeringMemoryPanel memory={memory} onChange={updateMemory} storageError={storageError}/>
- </section>;
+ </section></div>
+  <div hidden={section!=='workspace'}><ProjectWorkspacePanel evidence={engineeringEvidence}/></div>
+  <div hidden={section!=='tests'}><EngineeringEvidencePanel onReport={setEngineeringEvidence}/></div>
+  <div hidden={section!=='dependencies'}><RepositoryIntelligencePanel/></div>
+  <div hidden={section!=='memory'}><EngineeringMemoryPanel memory={memory} onChange={updateMemory} storageError={storageError}/></div>
+ </div>;
 }
