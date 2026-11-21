@@ -1,4 +1,5 @@
 import {useRef,useState} from 'react';
+import EngineeringEvidencePanel from './EngineeringEvidencePanel';
 import ProjectWorkspacePanel from './ProjectWorkspacePanel';
 import RepositoryIntelligencePanel from './RepositoryIntelligencePanel';
 import EngineeringMemoryPanel,{loadEngineeringMemory} from './EngineeringMemoryPanel';
@@ -69,6 +70,7 @@ export default function StarQualityPanel(){
   {importError&&<p className="ai-error" role="alert">{importError}</p>}
   {report&&<div className="ai-result" role="status"><p dir="auto">النموذج: {report.model}</p><p>الزمن: {report.elapsed_seconds} s</p><p>Tokens/s: {report.tokens_per_second??'غير متاح'}</p><p>نتائج الفحص الثابت: {report.findings.length}</p>{report.findings.map((f,i)=><p key={i} dir="ltr">{f.rule} — line {f.line}</p>)}<p>الكود المولّد لم يُنفّذ.</p></div>}
   <ProjectWorkspacePanel/>
+  <EngineeringEvidencePanel/>
   <RepositoryIntelligencePanel/>
   <EngineeringMemoryPanel memory={memory} onChange={updateMemory} storageError={storageError}/>
  </section>;

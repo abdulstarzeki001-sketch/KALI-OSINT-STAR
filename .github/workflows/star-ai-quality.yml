@@ -1,5 +1,6 @@
 name: STAR AI Quality
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
   push:
@@ -9,7 +10,7 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
         with:
@@ -17,9 +18,16 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-      - run: python -m unittest -v scripts.test_star_ai_quality
-      - run: python -m json.tool opencode.json > /dev/null
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
-      - run: node --experimental-strip-types --test apps/web/tests/quality-report.test.mjs apps/web/tests/verified-benchmark.test.mjs apps/web/tests/engineering-memory.test.mjs apps/web/tests/repository-intelligence.test.mjs apps/web/tests/project-workspace.test.mjs apps/web/tests/coding-copilot.test.mjs
+      - name: Run fixed engineering quality suites
+        run: python -m scripts.engineering_runner
+      - name: Upload metadata-only engineering evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: star-engineering-evidence
+          path: star-engineering-evidence.json
+          if-no-files-found: error
+          retention-days: 7
