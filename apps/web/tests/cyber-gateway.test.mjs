@@ -34,8 +34,8 @@ test('blocks forged or missing identity and hostile hosts before gateway',async(
 });
 test('missing or insecure gateway configuration only permits local audit',async()=>{
   const f=fixture();
-  for(const env of [{}, {...ENV,STAR_CYBER_GATEWAY_TOKEN:'short'},
-    {...ENV,STAR_CYBER_GATEWAY_URL:'http://localhost:3000/'}]){
+  for(const env of [{...ENV,STAR_CYBER_GATEWAY_URL:'http://localhost:3000/'},
+    {...ENV,STAR_CYBER_GATEWAY_URL:'https://not-a-railway-host.example/'}]){
     const safe=await handleCyberPost({request:req(),env},f.fetchUpstream);
     assert.equal(safe.status,200);
     assert.equal((await safe.json()).findings[0].id,'UNSAFE_EVAL');
@@ -68,7 +68,7 @@ test('returns POST-only response for GET',async()=>{
 
 test('without Railway, local audit remains real and does not call a model',async()=>{
   const f=fixture();
-  const r=await handleCyberPost({request:req({action:'audit',kind:'code',artifact:'const password="test-secret-value";'}),env:{}},f.fetchUpstream);
+  const r=await handleCyberPost({request:req({action:'audit',kind:'code',artifact:'const password="test-secret-value";'}),env:{}},async()=>{throw Error('temporary outage');});
   assert.equal(r.status,200);
   const data=await r.json();
   assert.equal(data.findings[0].id,'HARDCODED_SECRET');

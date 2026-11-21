@@ -50,7 +50,7 @@ test('rejects tampered tokens and enforces optional owner email allowlist',async
   assert.equal(await v(signed({email:'attacker@example.test'})),false);
   const token=signed();
   const [h,p,s]=token.split('.');
-  assert.equal(await v([h,p,'A'+s.slice(1)].join('.')),false);
+  assert.equal(await v([h,p,(s.startsWith('A')?'B':'A')+s.slice(1)].join('.')),false);
 });
 test('Gateway accepts a verified Access JWT without leaking sensitive routes, but no anonymous traffic',async()=>{
   const f=fixture(),gateway=createGateway({env:f.env,fetchImpl:f.fetchImpl});
