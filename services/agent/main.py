@@ -35,7 +35,11 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
         # Forbid all browser cross-origin API calls; do not enable CORS.
         if request.method in ('POST','PUT','PATCH','DELETE'):
             origin=request.headers.get('origin')
-            if origin and origin!=str(request.base_url).rstrip('/'):
+            # Compare origins by hostname; HTTPS reverse proxies may connect to the app over HTTP.
+            from urllib.parse import urlparse
+            host=request.headers.get('host','').lower()
+            parsed=urlparse(origin) if origin else None
+            if origin and (parsed.scheme not in ('https','http') or parsed.netloc.lower()!=host):
                 return JSONResponse({'error':'Cross-origin requests refused'},status_code=403)
         res=await call_next(request)
         res.headers['Cache-Control']='no-store'
