@@ -1,0 +1,33 @@
+# Cost-aware STAR Agent runtime, designed for Railway services capped at 1 GB RAM.
+# Source is a bounded snapshot of the owner's repository, not a live host shell.
+# Chromium is intentionally not installed; browser hosts remain disabled on this tier.
+FROM python:3.12-slim-bookworm
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 HOME=/tmp/agent-home
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git nodejs npm ca-certificates tini \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY services/agent/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt \
+ && groupadd -g 10001 agent && useradd -m -u 10001 -g 10001 -s /bin/sh agent \
+ && mkdir -p /app/services/agent /workspace /data /tmp/agent-home \
+ && touch /app/services/__init__.py \
+ && chown -R agent:agent /app /workspace /data /tmp/agent-home
+COPY --chown=agent:agent services/agent /app/services/agent
+# Only source code and project docs are copied; no runtime account secrets.
+COPY --chown=agent:agent apps /workspace/apps
+COPY --chown=agent:agent cloudflare /workspace/cloudflare
+COPY --chown=agent:agent services /workspace/services
+COPY --chown=agent:agent deploy /workspace/deploy
+COPY --chown=agent:agent docs /workspace/docs
+COPY --chown=agent:agent .github /workspace/.github
+COPY --chown=agent:agent README.md /workspace/README.md
+RUN chown -R agent:agent /workspace /app /data
+USER agent
+WORKDIR /workspace
+RUN git init -q && git add -A \
+ && git -c user.name="STAR Agent Snapshot" -c user.email="agent@invalid.local" commit -q -m "Initial isolated workspace snapshot"
+WORKDIR /app
+EXPOSE 8787
+ENTRYPOINT ["tini","--"]
+CMD ["python","-m","uvicorn","services.agent.main:create_app","--factory","--host","0.0.0.0","--port","8787","--workers","1"]
