@@ -1,12 +1,12 @@
 import {useState} from 'react';
 import {parseEvidence,evidenceLink} from './engineering-evidence';
-export default function EngineeringEvidencePanel(){
+export default function EngineeringEvidencePanel({onReport}:{onReport:(r:ReturnType<typeof parseEvidence>|null)=>void}){
  const [report,setReport]=useState<ReturnType<typeof parseEvidence>|null>(null);
  const [error,setError]=useState('');
  async function load(f:File|undefined){
   if(!f)return;
-  setReport(null);setError('');
-  try{if(f.size>16000)throw Error('Size limit');setReport(parseEvidence(await f.text()))}
+  setReport(null);onReport(null);setError('');
+  try{if(f.size>16000)throw Error('Size limit');const next=parseEvidence(await f.text());setReport(next);onReport(next)}
   catch{setError('تم رفض التقرير: صيغة غير صالحة أو نتائج غير متسقة.')}
  }
  return <section className="ai-panel" aria-label="STAR AI Test Evidence">

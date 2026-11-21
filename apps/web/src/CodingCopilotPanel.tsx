@@ -2,6 +2,7 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {checkShare,isCurrent,parseAdvisory,parseProposal,proposalMessages,reviewMessages,TASKS} from './coding-copilot';
 import type {Proposal,Task} from './coding-copilot';
 import {diffLines} from './project-workspace';
+import type {FlowEvent} from './engineering-orchestrator';
 
 const labels:Record<Task,string>={documentation:'تحسين التوثيق',readability:'تحسين قابلية القراءة',validation:'مراجعة التحقق من المدخلات',tests:'تحسين اختبارات الوحدة الموجودة'};
 async function ask(model:string,messages:{role:string;content:string}[],signal:AbortSignal){
@@ -12,7 +13,7 @@ async function ask(model:string,messages:{role:string;content:string}[],signal:A
  if(raw.length>64000)throw Error('استجابة أكبر من الحد');
  return JSON.parse(raw) as unknown;
 }
-export default function CodingCopilotPanel({name,source,onApply,disabled}:{name:string;source:string;onApply:(p:Proposal)=>void;disabled:boolean}){
+export default function CodingCopilotPanel({name,source,onApply,onFlow,disabled}:{name:string;source:string;onApply:(p:Proposal)=>void;onFlow:(e:FlowEvent)=>void;disabled:boolean}){
  const [task,setTask]=useState<Task>('readability');
  const [consent,setConsent]=useState(false);
  const [reviewConsent,setReviewConsent]=useState(false);
@@ -23,9 +24,10 @@ export default function CodingCopilotPanel({name,source,onApply,disabled}:{name:
  const [error,setError]=useState('');
  const controller=useRef<AbortController|null>(null);
  useEffect(()=>()=>controller.current?.abort(),[]);
+ useEffect(()=>{setConsent(false);setReviewConsent(false);setApproval(false)},[name,source]);
  const current=proposal!==null&&isCurrent(proposal,name,source);
  const diff=useMemo(()=>proposal?diffLines(proposal.base,proposal.source):[],[proposal]);
- function reset(){setProposal(null);setReview('');setApproval(false);setReviewConsent(false);setError('')}
+ function reset(){if(proposal)onFlow({type:'discard',name:proposal.name,base:proposal.base,candidate:proposal.source});setProposal(null);setReview('');setApproval(false);setReviewConsent(false);setError('')}
  async function requestProposal(){
   if(disabled||!consent||controller.current)return;
   reset();setConsent(false);
@@ -34,7 +36,9 @@ export default function CodingCopilotPanel({name,source,onApply,disabled}:{name:
   try{
    checkShare(source);
    const data=await ask('qwen3-coder-vast',proposalMessages(name,source,task),abort.signal);
-   setProposal(parseProposal(data,name,source));
+   if(abort.signal.aborted)return;
+   const next=parseProposal(data,name,source);
+   setProposal(next);onFlow({type:'proposal',name:next.name,base:next.base,candidate:next.source});
   }catch(e){if(!abort.signal.aborted)setError(e instanceof Error?e.message:'تعذر إنشاء المقترح');else setError('تم إلغاء الطلب أو انتهت مهلته')}
   finally{window.clearTimeout(timer);controller.current=null;setBusy(false)}
  }
@@ -43,7 +47,7 @@ export default function CodingCopilotPanel({name,source,onApply,disabled}:{name:
   setReviewConsent(false);setApproval(false);setReview('');setError('');
   const abort=new AbortController();controller.current=abort;setBusy(true);
   const timer=window.setTimeout(()=>abort.abort(),90000);
-  try{setReview(parseAdvisory(await ask('llama-cloudflare',reviewMessages(proposal),abort.signal)))}
+  try{const data=await ask('llama-cloudflare',reviewMessages(proposal),abort.signal);if(abort.signal.aborted)return;setReview(parseAdvisory(data));onFlow({type:'review',name:proposal.name,base:proposal.base,candidate:proposal.source})}
   catch(e){setError(e instanceof Error?e.message:'تعذر إجراء المراجعة')}
   finally{window.clearTimeout(timer);controller.current=null;setBusy(false)}
  }
