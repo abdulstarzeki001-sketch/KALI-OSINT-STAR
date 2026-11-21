@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "test:cloudflare": "node --test tests/ai-gateway.test.mjs tests/agent-chat-gateway.test.mjs tests/minis-cloudflare-bridge.test.mjs tests/cyber-gateway.test.mjs tests/agent-runtime.test.mjs",
+    "test:cloudflare": "node --test tests/ai-gateway.test.mjs tests/agent-chat-gateway.test.mjs tests/minis-cloudflare-bridge.test.mjs tests/cyber-gateway.test.mjs tests/agent-runtime.test.mjs tests/agent-inference.test.mjs",
     "test:markdown": "node --test tests/markdown-render.test.mjs",
     "test:bundle": "node --test tests/bundle-budget.test.mjs",
     "test:ai-core": "node --test tests/ai-core.test.mjs tests/agent-chat-core.test.mjs",

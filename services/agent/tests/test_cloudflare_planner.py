@@ -20,17 +20,15 @@ async def test_model_adapter_returns_real_http_plan_without_executing_it():
     def answer(req):
         requests.append(req)
         body=json.loads(req.content)
-        assert body['messages'][0]['role']=='user'
-        assert body['mode']=='general' and body['stream'] is False
-        assert 'Available tools' in body['messages'][0]['content']
+        assert 'Available tools' in body['prompt']
         return httpx.Response(200,json={'status':'completed','reply':
            '{"action":"tool","name":"list_files","arguments":{"path":"."}}'})
-    planner=CloudflarePlanner('https://kali-osint-star.pages.dev/api/ai/chat',
+    planner=CloudflarePlanner('https://kali-osint-star.pages.dev/api/agent/inference',
         transport=httpx.MockTransport(answer))
     r=await planner.complete([{'role':'user','content':'افحص الملفات'}],'signed-access-test-token')
     assert r['tool_calls'][0]['function']['name']=='list_files'
     assert len(requests)==1
-    assert requests[0].headers['cf-access-jwt-assertion']=='signed-access-test-token'
+    assert requests[0].headers['cf-access-token']=='signed-access-test-token'
 
 @pytest.mark.asyncio
 async def test_access_redirect_and_absent_token_fail_closed():

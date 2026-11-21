@@ -49,7 +49,7 @@ class CloudflarePlanner:
     def __init__(self,url:str,*,transport=None):
         parsed=urlparse(url)
         if (parsed.scheme!='https' or parsed.hostname!='kali-osint-star.pages.dev' or
-            parsed.path!='/api/ai/chat' or parsed.query or parsed.fragment or
+            parsed.path!='/api/agent/inference' or parsed.query or parsed.fragment or
             parsed.username or parsed.password or parsed.port):
             raise ValueError('Model endpoint must be the pinned private Cloudflare route')
         self.url=url;self.transport=transport
@@ -76,9 +76,10 @@ class CloudflarePlanner:
     async def complete(self,messages:list[dict],access_token:str|None=None):
         if not isinstance(access_token,str) or not access_token or len(access_token)>8192:
             raise ValueError('Active Cloudflare Access session required for model inference')
-        body={'mode':'general','stream':False,'temperature':0.1,
-            'messages':[{'role':'user','content':self.build_prompt(messages)}]}
-        headers={'Cf-Access-Jwt-Assertion':access_token,
+        body={'prompt':self.build_prompt(messages)}
+        # Linked App Token: Access accepts the original owner JWT on the
+        # inference app and exchanges it for a different audience-bound JWT.
+        headers={'Cf-Access-Token':access_token,
                  'content-type':'application/json','accept':'application/json'}
         async with httpx.AsyncClient(timeout=80,follow_redirects=False,trust_env=False,
             transport=self.transport) as client:
