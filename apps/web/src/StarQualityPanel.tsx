@@ -1,4 +1,5 @@
 import {useRef,useState} from 'react';
+import ProjectWorkspacePanel from './ProjectWorkspacePanel';
 import RepositoryIntelligencePanel from './RepositoryIntelligencePanel';
 import EngineeringMemoryPanel,{loadEngineeringMemory} from './EngineeringMemoryPanel';
 import {appendRun,STORAGE_KEY} from './engineering-memory';
@@ -67,6 +68,7 @@ export default function StarQualityPanel(){
   <small>لا يُرفع الملف إلى أي خادم. التقرير المستورد إفادة غير موقعة وليس دليلاً مستقلاً على التشغيل.</small>
   {importError&&<p className="ai-error" role="alert">{importError}</p>}
   {report&&<div className="ai-result" role="status"><p dir="auto">النموذج: {report.model}</p><p>الزمن: {report.elapsed_seconds} s</p><p>Tokens/s: {report.tokens_per_second??'غير متاح'}</p><p>نتائج الفحص الثابت: {report.findings.length}</p>{report.findings.map((f,i)=><p key={i} dir="ltr">{f.rule} — line {f.line}</p>)}<p>الكود المولّد لم يُنفّذ.</p></div>}
+  <ProjectWorkspacePanel/>
   <RepositoryIntelligencePanel/>
   <EngineeringMemoryPanel memory={memory} onChange={updateMemory} storageError={storageError}/>
  </section>;
