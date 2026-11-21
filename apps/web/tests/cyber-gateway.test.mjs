@@ -84,7 +84,8 @@ test('Cloudflare fallback exposes its model only when service binding exists',as
     kind:'code',artifact:'const token="my-secret-1234";'}),env},f.fetchUpstream);
   assert.equal(r.status,200);
   assert.equal((await r.json()).analysis,'Cyber advice');
-  assert.equal(f.seen.length,0);
+  // Model discovery queries Railway, while the Cloudflare review stays private.
+  assert.equal(f.seen.length,1);
 });
 
 test('default Railway gateway receives the verified owner Access JWT, not an invented token',async()=>{
