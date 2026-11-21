@@ -1,6 +1,10 @@
 import {useState} from 'react';
 import SafeMarkdown from './SafeMarkdown';
 import StarQualityPanel from './StarQualityPanel';
+import ControlHealthPanel from './ControlHealthPanel';
+import IntelligentDebuggerPanel from './IntelligentDebuggerPanel';
+import {CONTROL_SECTIONS,CONTROL_LABELS} from './control-center';
+import type {ControlSection} from './control-center';
 import {AI_MODELS,PRIVATE_MODEL} from './ai-models';
 import type {AIModel} from './ai-models';
 import './star-ai.css';
@@ -9,6 +13,7 @@ type Answer = {status?:string;model?:string;analysis?:string;notice?:string;erro
 const MAX_REPORT = 18000;
 const SAFE_TEST_REPORT = 'SYNTHETIC TEST ONLY. Authorized offline virtual lab: host 192.168.56.10 has SSH TCP/22 reachable; TCP/8080 unreachable; SSH patch status unknown. No exploitation performed and no credentials processed. Please suggest defensive validation and remediation.';
 export default function StarAIPanel() {
+  const [section,setSection]=useState<ControlSection>('health');
   const [toolCommand,setToolCommand]=useState('');
   const [toolWorking,setToolWorking]=useState(false);
   const [toolResponse,setToolResponse]=useState('');
@@ -131,14 +136,18 @@ export default function StarAIPanel() {
   }
   return <section className="star-ai page-animate" dir="rtl">
     <header className="ai-heading"><div><h1>STAR AI <span>Security Analyst</span></h1><p>حلّل تقارير مختبراتك، سجلات الدفاع، ومخرجات الأدوات.</p></div></header>
-    <div className="ai-notice">النص يُعالَج على الخادم الذي تختاره أدناه. أزل كلمات المرور ورموز API والبيانات الحساسة قبل الإرسال.</div>
+    <nav className="ai-control-nav" aria-label="أقسام مركز التحكم">{CONTROL_SECTIONS.map(id=><button key={id} type="button" aria-pressed={section===id} onClick={()=>setSection(id)}>{CONTROL_LABELS[id]}</button>)}</nav>
+    <div hidden={section!=='health'}><ControlHealthPanel/></div>
+    <div hidden={section!=='debugger'}><IntelligentDebuggerPanel onReport={value=>{if(loading||testState==='running')return;setReport(value);setFilename('star-debugger-report.json');setQuestion('راجع تصنيفات أخطاء البناء المرفقة واقترح خطوات تحقق وإصلاح دفاعية دون ادعاء تنفيذ الاختبارات.');setError('');setAnalysis('');setSection('analysis');}}/></div>
+    <div hidden={section!=='analysis'} className="ai-control-group"><div className="ai-notice">النص يُعالَج على الخادم الذي تختاره أدناه. أزل كلمات المرور ورموز API والبيانات الحساسة قبل الإرسال.</div>
     <label className="ai-model-picker">
       <span>نموذج تحليل التقارير</span>
       <select value={reportModel} disabled={loading||testState==='running'} onChange={e=>setReportModel(e.target.value as AIModel)}>
         {AI_MODELS.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}
       </select>
     </label>
-    <form className="ai-tool-command" onSubmit={e=>{e.preventDefault();void executeToolPrompt();}}>
+    </div>
+    <div hidden={section!=='tools'}><form className="ai-tool-command" onSubmit={e=>{e.preventDefault();void executeToolPrompt();}}>
       <div><strong>STAR AI → Railway Tool Executor</strong><small>مثال: «افحص Frida» أو «اعرض إصدار NetExec». ينفذ فحصاً محلياً ثابتاً فقط، ولا يرسل أوامر Shell أو يبدأ C2 تلقائياً.</small></div>
       <div className="ai-tool-command-row">
         <input aria-label="طلب استخدام أداة من الذكاء الاصطناعي" value={toolCommand} maxLength={400}
@@ -148,13 +157,12 @@ export default function StarAIPanel() {
       {toolError&&<p role="alert" className="ai-error">{toolError}</p>}
       {toolResponse&&<div className="ai-tool-command-result" role="status"><p>{toolResponse}</p>
         <pre dir="ltr">{toolOutput}</pre></div>}
-    </form>
-    <div className="ai-selftest" aria-label="اختبار التحليل من جلسة مستخدم مصادق عليها">
+    </form></div>
+    <div hidden={section!=='analysis'} className="ai-control-group"><div className="ai-selftest" aria-label="اختبار التحليل من جلسة مستخدم مصادق عليها">
       <div><strong>اختبار التحليل من جلستي المسجّلة</strong><small>يرسل تقريراً وهمياً فقط إلى نفس مسار التحليل المحمي، ويتحقق من الاستجابة الحقيقية. لا يحتاج مشاركة الرمز أو كلمة السر.</small></div>
       <button type="button" disabled={loading||testState==='running'} onClick={()=>void testAuthenticatedSession()}>{testState==='running'?'جارٍ الاختبار...':'اختبار الجلسة والتحليل الآن'}</button>
     </div>
     {testState!=='idle'&&testState!=='running'&&<p className={'ai-test-result '+(testState==='passed'?'ok':'failed')} role={testState==='failed'?'alert':'status'}>{testFeedback}</p>}
-    <StarQualityPanel/>
     <div className="ai-grid">
       <div className="ai-panel"><h2>01 — التقرير</h2><label htmlFor="star-ai-report">محتوى التقرير أو سجل التدريب</label><textarea id="star-ai-report" dir="auto" rows={13} value={report} maxLength={MAX_REPORT} onChange={e=>setReport(e.target.value)} placeholder="ألصق هنا تقرير المختبر أو مخرجات منقحة من بيانات حساسة..."/><div className="ai-toolbar"><label className="ai-upload">تحميل ملف TXT / JSON / MD / LOG<input type="file" accept=".txt,.json,.md,.log,text/plain,application/json" onChange={e=>void readFile(e.target.files?.[0])}/></label><span>{filename?filename+' · ':''}{report.length} / {MAX_REPORT}</span></div><label htmlFor="star-ai-question">سؤال تحليلي إضافي (اختياري)</label><input id="star-ai-question" type="text" maxLength={500} value={question} onChange={e=>setQuestion(e.target.value)} placeholder="مثلاً: رتّب المخاطر حسب الأولوية وكيفية المعالجة"/><button className="ai-submit" onClick={()=>void analyze()} disabled={loading||report.trim().length<30}>{loading?'جارٍ التحليل...':'تحليل التقرير بواسطة STAR AI'}</button></div>
       <div className="ai-panel ai-output-panel">
@@ -177,6 +185,7 @@ export default function StarAIPanel() {
           </div>
         </>:<div className="ai-empty">النتائج تظهر هنا بعد إرسال تقرير حقيقي. لن نولّد نتائج افتراضية أو ندّعي أن أدوات Kali فحصت جهازك.</div>}
       </div>
-    </div>
+    </div></div>
+    <div hidden={!(['quality','workspace','tests','dependencies','memory'] as ControlSection[]).includes(section)}><StarQualityPanel section={section}/></div>
   </section>;
 }
