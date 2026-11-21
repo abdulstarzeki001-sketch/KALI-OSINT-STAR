@@ -1,6 +1,7 @@
 import {useState} from 'react';
 import SafeMarkdown from './SafeMarkdown';
 import StarQualityPanel from './StarQualityPanel';
+import IntelligentDebuggerPanel from './IntelligentDebuggerPanel';
 import {AI_MODELS,PRIVATE_MODEL} from './ai-models';
 import type {AIModel} from './ai-models';
 import './star-ai.css';
@@ -155,6 +156,7 @@ export default function StarAIPanel() {
     </div>
     {testState!=='idle'&&testState!=='running'&&<p className={'ai-test-result '+(testState==='passed'?'ok':'failed')} role={testState==='failed'?'alert':'status'}>{testFeedback}</p>}
     <StarQualityPanel/>
+    <IntelligentDebuggerPanel onReport={value=>{setReport(value);setFilename('star-debugger-report.json');setQuestion('راجع تصنيفات أخطاء البناء المرفقة واقترح خطوات تحقق وإصلاح دفاعية دون ادعاء تنفيذ الاختبارات.');setError('');setAnalysis('');}}/>
     <div className="ai-grid">
       <div className="ai-panel"><h2>01 — التقرير</h2><label htmlFor="star-ai-report">محتوى التقرير أو سجل التدريب</label><textarea id="star-ai-report" dir="auto" rows={13} value={report} maxLength={MAX_REPORT} onChange={e=>setReport(e.target.value)} placeholder="ألصق هنا تقرير المختبر أو مخرجات منقحة من بيانات حساسة..."/><div className="ai-toolbar"><label className="ai-upload">تحميل ملف TXT / JSON / MD / LOG<input type="file" accept=".txt,.json,.md,.log,text/plain,application/json" onChange={e=>void readFile(e.target.files?.[0])}/></label><span>{filename?filename+' · ':''}{report.length} / {MAX_REPORT}</span></div><label htmlFor="star-ai-question">سؤال تحليلي إضافي (اختياري)</label><input id="star-ai-question" type="text" maxLength={500} value={question} onChange={e=>setQuestion(e.target.value)} placeholder="مثلاً: رتّب المخاطر حسب الأولوية وكيفية المعالجة"/><button className="ai-submit" onClick={()=>void analyze()} disabled={loading||report.trim().length<30}>{loading?'جارٍ التحليل...':'تحليل التقرير بواسطة STAR AI'}</button></div>
       <div className="ai-panel ai-output-panel">
