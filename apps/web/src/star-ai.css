@@ -73,3 +73,6 @@
 .ai-model-picker{display:flex;align-items:center;flex-wrap:wrap;gap:8px;color:#baccda;font-size:13px}
 .ai-model-picker select{max-width:100%;background:#071421;color:#ecf5f7;border:1px solid #395063;border-radius:10px;padding:9px 12px;font:inherit}
 .ai-model-picker select:focus-visible{outline:2px solid #77dac8;outline-offset:2px}
+
+/* Keep local drafts and reports mounted while navigating. */
+.star-ai [hidden]{display:none!important}.ai-control-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;padding:10px;border:1px solid #2e4153;border-radius:14px;background:#0b1724}.ai-control-nav button{min-height:44px;padding:10px;border:1px solid #395063;background:#102233;color:#c8dce6;border-radius:9px;cursor:pointer;font:inherit;font-size:13px}.ai-control-nav button[aria-pressed=true]{border-color:#78e7d1;color:#baffed;background:#164238}.ai-control-nav button:focus-visible{outline:2px solid #78e7d1;outline-offset:2px}.ai-control-group{display:grid;gap:14px;min-width:0}.ai-control-links{display:flex;gap:14px;flex-wrap:wrap}.ai-control-links a{color:#78e7d1}.ai-control-sections,.ai-control-sections>div{min-width:0}@media(max-width:520px){.ai-control-nav{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:8px}.ai-control-nav button{font-size:12px}}
