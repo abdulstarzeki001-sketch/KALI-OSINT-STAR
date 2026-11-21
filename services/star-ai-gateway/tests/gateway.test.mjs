@@ -1,0 +1,111 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createGateway,auditArtifact,redactSecrets,modelCatalog} from '../gateway.mjs';
+
+const TOKEN='test-gateway-token-with-at-least-32-characters';
+const ENV={
+  STAR_GATEWAY_TOKEN:TOKEN,
+  STAR_PROVIDER_TEST_KEY:'upstream-private-key-for-tests',
+  STAR_MODELS_JSON:JSON.stringify([{id:'qwen-coder',baseUrl:'https://models.example.org/v1',
+    upstreamModel:'Qwen/Qwen3-Coder',keyEnv:'STAR_PROVIDER_TEST_KEY'}])
+};
+function request(path,body,key=TOKEN,method='POST') {
+  return new Request('http://localhost:8080'+path,{
+    method,headers:{authorization:'Bearer '+key,...(body!==undefined?{'content-type':'application/json'}:{})},
+    ...(body!==undefined?{body:JSON.stringify(body)}:{})
+  });
+}
+const fakeAnswer={id:'upstream-test',choices:[{message:{content:'Verified mock provider answer'}}]};
+function fixture(overrides={}) {
+  const calls=[];
+  const handler=createGateway({env:{...ENV,...overrides},
+    fetchImpl:async(url,options)=>{
+      calls.push({url,options});
+      return new Response(JSON.stringify(fakeAnswer),{status:200,headers:{'content-type':'application/json'}});
+    }});
+  return {handler,calls};
+}
+test('health shows whether an upstream credential is configured without exposing it',async()=>{
+  const {handler}=fixture({STAR_PROVIDER_TEST_KEY:''});
+  const r=await handler(request('/healthz',undefined,'', 'GET'));
+  assert.equal(r.status,200);
+  const value=await r.json();
+  assert.equal(value.local_audit,true);
+  assert.equal(value.ai_ready,false);
+  assert.equal(JSON.stringify(value).includes('upstream-private-key'),false);
+});
+test('fails closed without valid gateway auth and never calls provider',async()=>{
+  const {handler,calls}=fixture();
+  assert.equal((await handler(request('/v1/models',undefined,'wrong','GET'))).status,401);
+  assert.equal((await handler(request('/v1/security/audit',{artifact:'eval(x)'},'wrong'))).status,401);
+  assert.equal(calls.length,0);
+});
+test('model listing returns alias only, no upstream URL or credential',async()=>{
+  const {handler}=fixture();
+  const r=await handler(request('/v1/models',undefined,TOKEN,'GET'));
+  const value=await r.json();
+  assert.equal(value.data[0].id,'qwen-coder');
+  assert.equal(JSON.stringify(value).includes('models.example.org'),false);
+});
+test('audits evidence locally and returns line numbers without echoing secrets',async()=>{
+  const {handler,calls}=fixture();
+  const artifact='const fine=true;\nconst password="super-secret-value";\neval(userInput);';
+  const r=await handler(request('/v1/security/audit',{artifact,kind:'code'}));
+  const out=await r.json();
+  assert.equal(r.status,200);
+  assert.equal(out.findings.some(x=>x.id==='HARDCODED_SECRET'&&x.line===2),true);
+  assert.equal(out.findings.some(x=>x.id==='UNSAFE_EVAL'&&x.line===3),true);
+  assert.equal(JSON.stringify(out).includes('super-secret-value'),false);
+  assert.equal(calls.length,0);
+});
+test('sends bounded chat to the operator-configured HTTPS endpoint only',async()=>{
+  const {handler,calls}=fixture();
+  const r=await handler(request('/v1/chat/completions',{
+    model:'qwen-coder',mode:'security',messages:[{role:'user',content:'Review my lab logs'}]
+  }));
+  assert.equal(r.status,200);
+  assert.equal((await r.json()).choices[0].message.content,'Verified mock provider answer');
+  assert.equal(calls[0].url,'https://models.example.org/v1/chat/completions');
+  assert.equal(JSON.parse(calls[0].options.body).messages[0].role,'system');
+  assert.match(calls[0].options.headers.authorization,/upstream-private-key-for-tests/);
+});
+test('rejects unsupported command endpoints and tool payloads',async()=>{
+  const {handler,calls}=fixture();
+  assert.equal((await handler(request('/v1/terminal/run',{command:'whoami'}))).status,404);
+  const r=await handler(request('/v1/chat/completions',{model:'qwen-coder',
+    messages:[{role:'tool',content:'exec'}],tools:[{name:'exec'}]}));
+  assert.equal(r.status,422);
+  assert.equal(calls.length,0);
+});
+test('rejects malformed model catalog and private upstream URLs',()=>{
+  assert.throws(()=>modelCatalog({STAR_MODELS_JSON:'not-json'}));
+  assert.throws(()=>modelCatalog({...ENV,STAR_MODELS_JSON:JSON.stringify([{
+    id:'local',upstreamModel:'x',baseUrl:'http://localhost:11434/v1',keyEnv:'STAR_PROVIDER_TEST_KEY'
+  }])}));
+});
+test('sanitizes recognized secrets before sending security review',async()=>{
+  const {handler,calls}=fixture();
+  const r=await handler(request('/v1/security/review',{
+    model:'qwen-coder',kind:'config',artifact:'password="super-secret-value"',
+    question:'Identify configuration weaknesses'
+  }));
+  assert.equal(r.status,200);
+  const data=await r.json();
+  assert.match(data.analysis,/Verified mock/);
+  const providerBody=JSON.stringify(JSON.parse(calls[0].options.body));
+  assert.equal(providerBody.includes('super-secret-value'),false);
+  assert.equal(JSON.stringify(data).includes('super-secret-value'),false);
+  assert.equal(redactSecrets('api_key="abc123456789"').includes('abc123456789'),false);
+});
+test('invalid bodies and unknown model fail without fallback fake output',async()=>{
+  const {handler,calls}=fixture();
+  assert.equal((await handler(request('/v1/security/audit',{kind:'oops',artifact:'hello world'}))).status,422);
+  assert.equal((await handler(request('/v1/chat/completions',{
+    model:'nonexistent',messages:[{role:'user',content:'hi'}]}))).status,503);
+  assert.equal(calls.length,0);
+});
+test('per-instance rate limit blocks the 21st authenticated request',async()=>{
+  const {handler}=fixture();
+  for(let i=0;i<20;i++)assert.equal((await handler(request('/v1/security/audit',{artifact:'eval(x)'}))).status,200);
+  assert.equal((await handler(request('/v1/security/audit',{artifact:'eval(x)'}))).status,429);
+});

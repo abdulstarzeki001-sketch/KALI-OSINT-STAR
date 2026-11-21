@@ -1,0 +1,21 @@
+
+.cyber-ai-page{display:grid;gap:18px;padding-bottom:36px;max-width:1440px;margin:auto}
+.cyber-heading{padding:16px 0}.cyber-heading h1{font-size:clamp(1.6rem,3vw,2.35rem);margin:8px 0}.cyber-heading h1 span{color:#8f8bf2}.cyber-heading p{color:var(--text-muted,#a3adc1);max-width:720px}
+.cyber-notice,.cyber-pane{background:#131a2a;border:1px solid #303951;border-radius:16px;padding:18px}
+.cyber-notice{color:#bfc8dc;font-size:.9rem}.cyber-grid{display:grid;grid-template-columns:minmax(280px,1fr) minmax(280px,1.05fr);gap:16px}
+.cyber-pane{display:flex;flex-direction:column;gap:11px;min-width:0}.cyber-pane h2{font-size:1.1rem;margin:0 0 10px;color:#f1f3ff}
+.cyber-pane label{color:#d9dfef;font-weight:600;font-size:.88rem}
+.cyber-pane textarea,.cyber-pane input,.cyber-pane select{background:#0c1220;color:#eef0fc;border:1px solid #384763;border-radius:9px;padding:11px;font:inherit;width:100%;box-sizing:border-box}
+.cyber-pane textarea{line-height:1.5;resize:vertical;min-height:200px}.cyber-meta,.cyber-disclaimer,.cyber-audit small,.cyber-review small{font-size:.78rem;color:#a6aec0}
+.cyber-main-btn,.cyber-secondary-btn{border:0;border-radius:9px;padding:11px 15px;font:inherit;font-weight:700;cursor:pointer}
+.cyber-main-btn{background:#736be6;color:white}.cyber-secondary-btn{background:#203659;color:#e0ecff;border:1px solid #5774a1}
+.cyber-main-btn:disabled,.cyber-secondary-btn:disabled{opacity:.5;cursor:not-allowed}
+.cyber-results{min-height:380px}.cyber-empty{color:#9caec9;line-height:1.7}.cyber-error{color:#ffb4b4}
+.cyber-audit-summary,.cyber-finding>div{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.cyber-audit-summary{background:#17283a;border-radius:9px;padding:13px;margin-bottom:14px}
+.cyber-audit-summary span,.cyber-finding span{color:#aeb9d2;font-size:.82rem}
+.cyber-finding{border:1px solid #324361;padding:12px;border-radius:10px;margin-bottom:10px}
+.cyber-finding p{margin:8px 0 0;color:#c5cde0;font-size:.88rem;line-height:1.6}
+.cyber-review{border-top:1px solid #39445e;margin-top:14px;padding-top:16px;color:#d5dbec;overflow-wrap:anywhere}
+.cyber-review pre{max-width:100%;overflow:auto}
+@media(max-width:900px){.cyber-grid{grid-template-columns:1fr}.cyber-ai-page{padding-inline:6px}}
