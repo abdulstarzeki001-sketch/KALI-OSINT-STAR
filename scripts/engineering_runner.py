@@ -15,7 +15,8 @@ SUITES = (
         "apps/web/tests/quality-report.test.mjs", "apps/web/tests/verified-benchmark.test.mjs",
         "apps/web/tests/engineering-memory.test.mjs", "apps/web/tests/repository-intelligence.test.mjs",
         "apps/web/tests/project-workspace.test.mjs", "apps/web/tests/coding-copilot.test.mjs",
-        "apps/web/tests/engineering-evidence.test.mjs", "apps/web/tests/engineering-orchestrator.test.mjs"]),
+        "apps/web/tests/engineering-evidence.test.mjs", "apps/web/tests/engineering-orchestrator.test.mjs",
+        "apps/web/tests/intelligent-debugger.test.mjs", "apps/web/tests/control-center.test.mjs"]),
 )
 def run_suite(suite_id, command):
     start = time.monotonic()
