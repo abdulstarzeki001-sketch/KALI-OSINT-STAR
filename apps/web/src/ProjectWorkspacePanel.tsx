@@ -1,6 +1,8 @@
 import {useMemo,useRef,useState} from 'react';
 import {addFile,editFile,diffLines,workspaceReport,MAX_SOURCE_BYTES,MAX_WORKSPACE_FILES} from './project-workspace';
 import type {WorkspaceFile} from './project-workspace';
+import CodingCopilotPanel from './CodingCopilotPanel';
+import {isCurrent} from './coding-copilot';
 function save(name:string,text:string,type='text/plain;charset=utf-8'){
  const url=URL.createObjectURL(new Blob([text],{type}));
  const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -43,7 +45,7 @@ export default function ProjectWorkspacePanel(){
  }
  return <section className="ai-panel" aria-label="STAR AI Project Workspace">
   <h2>STAR AI — مساحة العمل الهندسية</h2>
-  <small>مساحة تحرير محلية مؤقتة لملفاتك المملوكة، حتى 12 ملفاً و600 سطر لكل ملف. لا يُنفّذ الكود ولا تُرسل الملفات أو تُحفظ في الذاكرة الدائمة. لا تستورد بيانات اعتماد أو ملفات حساسة. احفظ التعديلات قبل إغلاق الصفحة.</small>
+  <small>مساحة تحرير محلية مؤقتة لملفاتك المملوكة، حتى 12 ملفاً و600 سطر لكل ملف. لا يُنفّذ الكود ولا تُحفظ الملفات في الذاكرة الدائمة. إرسال محتوى الملف للمساعد اختياري وبموافقة صريحة. لا تستورد بيانات اعتماد أو ملفات حساسة. احفظ التعديلات قبل إغلاق الصفحة.</small>
   <label className="ai-upload">فتح ملفات المشروع<input type="file" multiple disabled={busy} accept=".py,.ts,.tsx,.js,.jsx,.mjs,.json,.md,.txt,.css,.html,.yaml,.yml,.toml" onChange={e=>{void openFiles(e.target.files);e.currentTarget.value=''}}/></label>
   {error&&<p className="ai-error" role="alert">{error}</p>}
   <p role="status">{files.length} / {MAX_WORKSPACE_FILES} ملفات · {files.filter(f=>f.original!==f.draft).length} ملفات معدلة</p>
@@ -54,6 +56,7 @@ export default function ProjectWorkspacePanel(){
     <button type="button" disabled={busy} onClick={()=>save(selected.name,selected.draft)}>تنزيل الملف المعدل</button>
     <button type="button" onClick={()=>setShowDiff(v=>!v)}>{showDiff?'إخفاء المقارنة':'مقارنة النسخة الأصلية والمعدلة'}</button>
     {showDiff&&<div className="ai-panel"><p>+{diff.filter(l=>l.kind==='add').length} / −{diff.filter(l=>l.kind==='remove').length}</p><pre dir="ltr" className="ai-source-view" style={{maxHeight:420,overflow:'auto'}}>{diff.map((l,i)=><div key={i} style={{color:l.kind==='add'?'#16a34a':l.kind==='remove'?'#dc2626':undefined}}>{l.kind==='add'?'+':l.kind==='remove'?'-':' '} {l.oldLine??' '}:{l.newLine??' '} {l.text}</div>)}</pre></div>}
+    <CodingCopilotPanel key={selected.name} name={selected.name} source={selected.draft} disabled={busy} onApply={p=>{if(!busy&&isCurrent(p,selected.name,selected.draft))update(p.source)}}/>
     <label><input type="checkbox" checked={confirmReset} onChange={e=>setConfirmReset(e.target.checked)}/> تأكيد التخلص من تعديلات الملف الحالي</label>
     <button type="button" disabled={!confirmReset||busy} onClick={()=>{update(selected.original);setConfirmReset(false)}}>استعادة الأصل</button>
     <button type="button" disabled={!confirmReset||busy} onClick={remove}>إغلاق الملف دون حفظ</button>
