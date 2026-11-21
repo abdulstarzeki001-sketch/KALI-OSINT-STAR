@@ -1,0 +1,34 @@
+# Use with: docker compose -f compose.yaml -f compose.agent.yaml up -d --build
+services:
+  star-agent:
+    build:
+      context: ../../services/agent
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8787:8787"
+    depends_on:
+      - star-ai-cpu
+    environment:
+      STAR_AGENT_API_KEY: ${STAR_AGENT_API_KEY:?Set separate agent key in .env}
+      STAR_CPU_API_KEY: ${STAR_CPU_API_KEY:?Model key missing}
+      STAR_MODEL_URL: http://star-ai-cpu:8080/v1
+      STAR_MODEL_ID: star-ai-cpu
+      STAR_AGENT_WORKSPACE: /workspace
+      STAR_AGENT_STATE_DIR: /data
+      STAR_AGENT_BROWSER_HOSTS: ${STAR_AGENT_BROWSER_HOSTS:-}
+    volumes:
+      - agent_state:/data
+      - ./workspace:/workspace:rw
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+    pids_limit: 150
+    mem_limit: 2g
+    cpus: 2
+    restart: unless-stopped
+volumes:
+  agent_state:

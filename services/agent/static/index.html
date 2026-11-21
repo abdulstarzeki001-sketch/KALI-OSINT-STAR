@@ -1,0 +1,29 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>STAR AI Agent</title>
+<style>body{font:16px system-ui;background:#0a1020;color:#e5eefc;padding:16px;line-height:1.6}main{max-width:900px;margin:auto}section{background:#152237;border:1px solid #334866;border-radius:14px;padding:16px;margin:14px 0}input,textarea{width:100%;padding:12px;color:white;background:#080e1a;border:1px solid #425b7d;border-radius:8px;font:inherit;box-sizing:border-box;margin:8px 0}textarea{min-height:120px}button{border:1px solid #6881a5;background:#225a93;color:white;border-radius:8px;padding:10px 16px;margin:5px;cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080e1a;padding:10px;max-height:330px;overflow:auto;border-radius:8px}small{color:#9caec6}#shot{max-width:100%}.event{border-bottom:1px solid #41546b;padding:8px 0}</style></head>
+<body><main><h1>✳ STAR AI Agent</h1><p>وكيل CPU: ملفات، اختبارات، متصفح؛ إجراءات حساسة بموافقتك.</p>
+<section><h2>اتصال آمن</h2><p>أدخل مفتاح STAR_AGENT_API_KEY الخاص بالخادم؛ لا يُحفظ داخل المتصفح.</p><input id="key" type="password" autocomplete="off" placeholder="Agent API Key"/><button id="connect">اتصال</button><small id="message"></small></section>
+<section><h2>المهمة</h2><textarea id="prompt" placeholder="مثال: افحص ملفات المشروع وحالة Git، واقترح إصلاحاً، ثم اطلب إذني قبل تعديل الملفات"></textarea><button id="submit">نفّذ المهمة</button><button id="refresh">تحديث</button></section>
+<section id="task" hidden><h2>حالة المهمة: <span id="phase"></span></h2><small id="id"></small><p id="result"></p><div id="approval"></div><div id="events"></div><img id="shot" hidden alt="لقطة صفحة الويب"/></section>
+</main><script>
+"use strict";let token="",id="",timer=null,shotURL="";
+const el=x=>document.getElementById(x);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function headers(){return {"Authorization":"Bearer "+token,"Content-Type":"application/json"}}
+async function api(path,opts={}){const r=await fetch(path,{...opts,headers:headers(),cache:"no-store"});const d=await r.json();if(!r.ok)throw Error(d.detail||d.error||"HTTP "+r.status);return d}
+function say(s){el("message").textContent=s}
+el("connect").onclick=()=>{token=el("key").value.trim();el("key").value="";say(token.length>=32?"تم حفظ المفتاح مؤقتاً":"مفتاح غير صالح")};
+el("submit").onclick=async()=>{try{if(!token)throw Error("أدخل المفتاح أولاً");const t=await api("/api/tasks",{method:"POST",body:JSON.stringify({prompt:el("prompt").value})});id=t.id;el("task").hidden=false;el("id").textContent=id;clearInterval(timer);timer=setInterval(refresh,2500);await refresh()}catch(e){say(e.message)}};
+el("refresh").onclick=refresh;
+async function decide(approve){try{await api("/api/tasks/"+id+"/decide",{method:"POST",body:JSON.stringify({approve})});await refresh()}catch(e){say(e.message)}}
+async function refresh(){if(!id||!token)return;try{
+ const t=await api("/api/tasks/"+id);el("phase").textContent=t.status;el("result").textContent=t.result||"";
+ el("approval").replaceChildren();
+ if(t.pending){const box=document.createElement("div"),label=document.createElement("p"),pre=document.createElement("pre"),yes=document.createElement("button"),no=document.createElement("button");
+ label.textContent="موافقة مطلوبة: "+t.pending.name;pre.textContent=JSON.stringify(t.pending.arguments,null,2);
+ yes.textContent="موافقة على الإجراء";no.textContent="رفض";yes.onclick=()=>decide(true);no.onclick=()=>decide(false);box.append(label,pre,yes,no);el("approval").append(box)}
+ el("events").replaceChildren();for(const e of (t.events||[])){const box=document.createElement("div"),title=document.createElement("strong"),pre=document.createElement("pre");box.className="event";title.textContent=e.kind+" • "+new Date(e.ts*1000).toLocaleTimeString("ar-IQ");pre.textContent=JSON.stringify(e.detail,null,2);box.append(title,pre);el("events").append(box)}
+ if(["completed","failed","rejected","interrupted"].includes(t.status))clearInterval(timer);
+ const pic=await fetch("/api/tasks/"+id+"/screenshot",{headers:{"Authorization":"Bearer "+token},cache:"no-store"});
+ if(pic.ok){if(shotURL)URL.revokeObjectURL(shotURL);shotURL=URL.createObjectURL(await pic.blob());el("shot").src=shotURL;el("shot").hidden=false}
+ }catch(e){say(e.message)}}
+</script></body></html>
