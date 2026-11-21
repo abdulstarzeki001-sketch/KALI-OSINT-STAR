@@ -17,12 +17,14 @@ from .access_auth import AccessVerifier
 
 def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
     secret=secret if secret is not None else os.getenv('STAR_AGENT_API_KEY','')
-    if len(secret)<32 or secret.startswith('CHANGE_ME'):
+    if secret and (len(secret)<32 or secret.startswith('CHANGE_ME')):
         raise RuntimeError('STAR_AGENT_API_KEY must contain 32+ random characters')
     access_verifier=AccessVerifier(
         os.getenv('STAR_AGENT_ACCESS_TEAM_DOMAIN',''),
         os.getenv('STAR_AGENT_ACCESS_AUD',''),
         os.getenv('STAR_AGENT_ACCESS_ALLOWED_EMAILS',''))
+    if not secret and not access_verifier.enabled:
+        raise RuntimeError('Configure signed Cloudflare Access or a strong owner API key')
     if engine is None:
         state=Path(os.getenv('STAR_AGENT_STATE_DIR','/data'))
         executor=Executor(Path(os.getenv('STAR_AGENT_WORKSPACE','/workspace')),state,
@@ -69,7 +71,7 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
         if not value.startswith('Bearer '):
             raise HTTPException(401,'Invalid agent access token')
         token=value[7:]
-        if len(token)<=256 and secrets.compare_digest(token,secret):
+        if len(secret)>=32 and len(token)<=256 and secrets.compare_digest(token,secret):
             return {'owner':'admin','token':None}
         identity=await access_verifier.verify(token)
         if identity:
