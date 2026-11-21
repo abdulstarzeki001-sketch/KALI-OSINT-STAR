@@ -22,11 +22,14 @@ import httpx
 BAD_NAMES={'.env','.npmrc','.pypirc','id_rsa','id_ed25519','credentials','known_hosts'}
 BAD_SUFFIX={'.pem','.key','.p12','.pfx','.sqlite','.db'}
 SKIP_DIRS={'.git','.venv','node_modules','dist','build','__pycache__'}
+def forbidden_name(value:str)->bool:
+    return value in BAD_NAMES or value in SKIP_DIRS or value.startswith('.env') or bool(re.search(r'(secret|credential|token)',value,re.I))
+
 AUTO_TOOLS={'list_files','read_file','search_text','git_status','browser_open','browser_text','browser_screenshot'}
 MAX_STEPS=10
 def redact(value:Any)->Any:
     if isinstance(value,dict):
-        return {k:('[REDACTED]' if k in ('value','content','api_key','secret','password') else redact(v)) for k,v in value.items()}
+        return {k:('[REDACTED]' if k in ('value','content','old','new','api_key','secret','password') else redact(v)) for k,v in value.items()}
     if isinstance(value,list): return [redact(v) for v in value]
     if isinstance(value,str):
         value=re.sub(r'(?:sk-|gh[pousr]_|Bearer\s+)[A-Za-z0-9_.-]{14,}', '[REDACTED]',value)
@@ -113,9 +116,7 @@ class Executor:
             raise ValueError('Invalid relative file path')
         raw=self.root/name
         parts=Path(name).parts
-        if any(x in ('..','') or x in SKIP_DIRS or x in BAD_NAMES or
-               x.startswith('.env') or re.search(r'(secret|credential|token)',x,re.I)
-               for x in parts):
+        if any(x in ('..','') or forbidden_name(x) for x in parts):
             raise ValueError('Sensitive or excluded path')
         current=self.root
         for part in parts:
@@ -154,7 +155,7 @@ class Executor:
         if not base.is_dir():raise ValueError('Not a directory')
         names=[]
         for p in sorted(base.iterdir(),key=lambda q:q.name)[:120]:
-            if p.name in SKIP_DIRS or p.name in BAD_NAMES or p.suffix.lower() in BAD_SUFFIX:continue
+            if forbidden_name(p.name) or p.suffix.lower() in BAD_SUFFIX:continue
             names.append(str(p.relative_to(self.root))+('/' if p.is_dir() else ''))
         return '\n'.join(names) or '(empty)'
     def search_text(self,query:str)->str:
@@ -162,9 +163,9 @@ class Executor:
         found=[]
         examined=0
         for root,dirs,files in os.walk(self.root):
-            dirs[:]=[d for d in dirs if d not in SKIP_DIRS and d not in BAD_NAMES]
+            dirs[:]=[d for d in dirs if not forbidden_name(d)]
             for file in files:
-                if file in BAD_NAMES or Path(file).suffix.lower() in BAD_SUFFIX:continue
+                if forbidden_name(file) or Path(file).suffix.lower() in BAD_SUFFIX:continue
                 p=Path(root)/file
                 if p.is_symlink() or p.stat().st_size>36000:continue
                 examined+=1
