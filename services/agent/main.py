@@ -128,4 +128,4 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
             return {'jsonrpc':'2.0','id':None,'error':{'code':-32602,'message':str(e)[:160]}}
     return app
 
-app=create_app()
+# Uvicorn imports this as a factory, so tests can inject an isolated engine.
