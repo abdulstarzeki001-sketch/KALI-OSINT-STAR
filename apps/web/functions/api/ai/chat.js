@@ -1,4 +1,5 @@
 import {verifyAccessRequest,accessFailureStatus} from '../../../access-jwt.js';
+import {PRIVATE_MODEL,requestPrivateCompletion} from './railway-gateway.js';
 
 // Cloudflare Access authenticates the caller. STAR_AI is a private service
 // binding: no API key, model credential, or direct Worker URL reaches the browser.
@@ -8,7 +9,25 @@ const HEADERS={'cache-control':'no-store','x-content-type-options':'nosniff','re
 function json(value,status=200){
  return new Response(JSON.stringify(value),{status,headers:{...HEADERS,'content-type':'application/json; charset=utf-8'}});
 }
-export async function onRequestPost({request,env}){
+async function railwayChat(request,env,body,fetchUpstream){
+ const response=await requestPrivateCompletion(request,env,body,fetchUpstream);
+ if(!response)return json({error:'Private model gateway is not configured'},503);
+ if(!response.ok){
+  if(response.status===429)return json({error:'Private model request limit reached'},429);
+  return json({error:'Private model did not respond'},503);
+ }
+ const type=response.headers.get('content-type')||'';
+ if(body.stream){
+  if(!response.body||!type.includes('text/event-stream'))return json({error:'Private model stream unavailable'},503);
+  return new Response(response.body,{headers:{...HEADERS,'content-type':'text/event-stream; charset=utf-8','x-accel-buffering':'no'}});
+ }
+ if(!type.includes('application/json'))return json({error:'Private model reply unavailable'},503);
+ const result=await response.json();
+ const reply=result?.choices?.[0]?.message?.content;
+ if(typeof reply!=='string'||!reply.trim())return json({error:'Private model reply unavailable'},503);
+ return json({reply,model:PRIVATE_MODEL});
+}
+export async function handleChatPost({request,env},fetchUpstream=globalThis.fetch){
  const url=new URL(request.url);
  if(url.hostname!==HOST)return json({error:'Restricted host'},403);
  const origin=request.headers.get('origin');
@@ -17,7 +36,6 @@ export async function onRequestPost({request,env}){
  const access=await verifyAccessRequest(request,env);
  if(!access.ok)return json({error:'Cloudflare Access verification failed',code:access.reason},accessFailureStatus(access.reason));
  if(!request.headers.get('content-type')?.toLowerCase().includes('application/json'))return json({error:'JSON request required'},415);
- if(!env.STAR_AI)return json({error:'Private AI service binding unavailable'},503);
  let data;
  try{
   const text=await request.text();
@@ -27,6 +45,8 @@ export async function onRequestPost({request,env}){
  if(!data||!Array.isArray(data.messages)||data.messages.length<1||data.messages.length>24||
     !MODES.has(data.mode)||typeof data.stream!=='boolean')
   return json({error:'Invalid conversation or mode'},422);
+ if(data.model!==undefined&&data.model!==PRIVATE_MODEL&&data.model!=='llama-cloudflare')
+  return json({error:'Invalid model'},422);
  let total=0;
  for(const message of data.messages){
   if(!message||!['user','assistant'].includes(message.role)||typeof message.content!=='string'||
@@ -39,11 +59,16 @@ export async function onRequestPost({request,env}){
   return json({error:'Invalid creativity setting'},422);
  // Explicitly permit informational questions; NEVER accept an arbitrary shell,
  // executable command, target address or tool invocation in the API schema.
- const body=JSON.stringify({messages:data.messages,mode:data.mode,stream:data.stream,temperature:data.temperature??0.5});
+ const body={
+  messages:data.messages.map(({role,content})=>({role,content})),
+  mode:data.mode,stream:data.stream,temperature:data.temperature??0.5
+ };
  try{
+  if(data.model===PRIVATE_MODEL)return await railwayChat(request,env,body,fetchUpstream);
+  if(!env.STAR_AI)return json({error:'Private AI service binding unavailable'},503);
   const result=await env.STAR_AI.fetch('https://star-ai-service.internal/chat',{
    method:'POST',headers:{'content-type':'application/json','accept':data.stream?'text/event-stream':'application/json'},
-   body
+   body:JSON.stringify(body)
   });
   const ct=result.headers.get('content-type')||'';
   const safeType=result.ok && data.stream && ct.includes('text/event-stream')
@@ -52,4 +77,5 @@ export async function onRequestPost({request,env}){
   return new Response(result.body,{status:result.status,headers:{...HEADERS,'content-type':safeType,...(safeType.startsWith('text/event-stream')?{'x-accel-buffering':'no'}:{})}});
  }catch{return json({error:'AI inference gateway unavailable'},503);}
 }
+export async function onRequestPost(context){return handleChatPost(context);}
 export async function onRequestGet(){return json({error:'POST only'},405);}

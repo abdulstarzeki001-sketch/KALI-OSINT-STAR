@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {onRequestPost,onRequestGet} from '../functions/api/ai/chat.js';
+import {handleChatPost,onRequestPost,onRequestGet} from '../functions/api/ai/chat.js';
 import {ownerToken,mint,attackerPair,resetCerts} from './access-test-keys.mjs';
 
 const URL='https://kali-osint-star.pages.dev/api/ai/chat';
@@ -74,4 +74,35 @@ test('rejects injection of executable actions and invalid history before AI serv
  const r=await onRequestPost({request:input({body:JSON.stringify(bad[5])}),env:{STAR_AI:s}});
  assert.equal(r.status,200);assert.equal(s.received.command,undefined);
  assert.equal(s.calls,1);
+});
+
+test('selected private model streams through the authenticated Railway gateway',async()=>{
+ const s=mock();
+ const stream='data: {"choices":[{"delta":{"content":"a"}}]}\n\ndata: [DONE]\n\n';
+ const body=JSON.stringify({model:'qwen3-coder-vast',mode:'code',stream:true,
+  messages:[{...HISTORY[0],tool_calls:[{name:'ignored'}]}]});
+ let calls=0;
+ const response=await handleChatPost({request:input({body}),env:{STAR_AI:s}},async(url,options)=>{
+  calls++;
+  assert.equal(url,'https://star-ai-cyber-gateway-production.up.railway.app/v1/chat/completions');
+  assert.equal(options.redirect,'manual');
+  assert.equal(options.headers.authorization,'Bearer '+ownerToken);
+  assert.deepEqual(JSON.parse(options.body),{
+   model:'qwen3-coder-vast',mode:'code',messages:HISTORY,stream:true,temperature:0.5
+  });
+  return new Response(stream,{headers:{'content-type':'text/event-stream'}});
+ });
+ assert.equal(calls,1);
+ assert.equal(s.calls,0);
+ assert.equal(response.status,200);
+ assert.equal(await response.text(),stream);
+});
+
+test('private model failure does not send conversation to Cloudflare',async()=>{
+ const s=mock();
+ const body=JSON.stringify({model:'qwen3-coder-vast',mode:'general',stream:true,messages:HISTORY});
+ const response=await handleChatPost({request:input({body}),env:{STAR_AI:s}},
+  async()=>new Response(null,{status:302,headers:{location:'https://other.example'}}));
+ assert.equal(response.status,503);
+ assert.equal(s.calls,0);
 });
