@@ -1,11 +1,12 @@
 // Session-only coordination; imported CI evidence never authorizes a local draft.
 export type ChangeFlow={name:string;base:string;candidate:string;stage:'proposed'|'reviewed'|'applied'};
-export type FlowEvent={type:'proposal'|'review'|'apply';name:string;base:string;candidate:string};
+export type FlowEvent={type:'proposal'|'review'|'apply'|'discard';name:string;base:string;candidate:string};
 export function advanceFlow(previous:ChangeFlow|null,event:FlowEvent):ChangeFlow|null{
  const {name,base,candidate}=event;
  if(!name||!candidate.trim()||base===candidate)return previous;
  if(event.type==='proposal')return {name,base,candidate,stage:'proposed'};
  if(!previous||previous.name!==name||previous.base!==base||previous.candidate!==candidate||previous.stage==='applied')return previous;
+ if(event.type==='discard')return null;
  if(event.type==='review')return {...previous,stage:'reviewed'};
  return {...previous,stage:'applied'};
 }
