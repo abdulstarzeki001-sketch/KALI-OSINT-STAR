@@ -1,4 +1,7 @@
 import {useRef,useState} from 'react';
+import EngineeringMemoryPanel,{loadEngineeringMemory} from './EngineeringMemoryPanel';
+import {appendRun,STORAGE_KEY} from './engineering-memory';
+import type {Memory,ModelId} from './engineering-memory';
 import {QUALITY_FIXTURE,QUALITY_QUESTION,QUALITY_MODELS,parseReview,parseQualityReport} from './quality-report';
 import type {QualityModel} from './quality-report';
 import {benchmarkPrompt,BENCHMARK_INSTRUCTION,gradeBenchmark} from './verified-benchmark';
@@ -6,6 +9,14 @@ import {benchmarkPrompt,BENCHMARK_INSTRUCTION,gradeBenchmark} from './verified-b
 type Result = {requested:QualityModel;model:string;analysis:string;elapsed:number;grade?:ReturnType<typeof gradeBenchmark>};
 export default function StarQualityPanel(){
  const lock=useRef(false);
+ const [memory,setMemory]=useState(loadEngineeringMemory);
+ const memoryRef=useRef(memory);
+ const [remember,setRemember]=useState(false);
+ const [storageError,setStorageError]=useState(false);
+ function updateMemory(next:Memory){
+  memoryRef.current=next;setMemory(next);
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next));setStorageError(false)}catch{setStorageError(true)}
+ }
  const [busy,setBusy]=useState(false);
  const [results,setResults]=useState<Result[]>([]);
  const [errors,setErrors]=useState<string[]>([]);
@@ -23,7 +34,10 @@ export default function StarQualityPanel(){
      const r=await fetch('/api/ai/analyze',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','Accept':'application/json'},signal:controller.signal,body:JSON.stringify({report:verified?benchmarkPrompt():QUALITY_FIXTURE,question:verified?BENCHMARK_INSTRUCTION:QUALITY_QUESTION,model:requested})});
      if(!r.ok||!(r.headers.get('content-type')||'').includes('application/json'))throw new Error('HTTP '+r.status+' — تحقق من الجلسة وموارد النموذج');
      const answer=parseReview(await r.json(),requested);
-     setResults(previous=>[...previous,{requested,...answer,elapsed:Math.round(performance.now()-start),grade:verified?gradeBenchmark(answer.analysis):undefined}]);
+     const elapsed=Math.round(performance.now()-start);
+     const grade=verified?gradeBenchmark(answer.analysis):undefined;
+     setResults(previous=>[...previous,{requested,...answer,elapsed,grade}]);
+     if(grade&&remember)updateMemory(appendRun(memoryRef.current,{model:answer.model as ModelId,at:new Date().toISOString(),ms:elapsed,version:grade.version,correct:grade.correct,total:5,complete:grade.complete}));
     }catch(e){setErrors(previous=>[...previous,requested+': '+(e instanceof Error?e.message:'فشل الاتصال')]);}
     finally{window.clearTimeout(timeout);}
    }
@@ -42,6 +56,7 @@ export default function StarQualityPanel(){
   <p>مقارنة مستقلة بين Qwen3-Coder 30B وLlama عبر البوابة المصادق عليها. يُرسل تمرين مصطنع فقط لكل نموذج؛ لا تُرسل ملفاتك أو إجابة النموذج الأول إلى الطرف الآخر. قد تُحتسب رسوم الاستدلال المعتادة.</p>
   <details><summary>عرض حالة الاختبار المصطنعة</summary><pre className="ai-source-view" dir="ltr">{QUALITY_FIXTURE}</pre></details>
   <button type="button" disabled={busy} onClick={()=>void compare()}>{busy?'جارٍ المقارنة...':'اختبار النموذجين ومقارنة المراجعة'}</button>
+  <label><input type="checkbox" disabled={busy} checked={remember} onChange={e=>setRemember(e.target.checked)}/> حفظ نتائج التقييم في سجل هذا المتصفح</label>
   <button type="button" disabled={busy} onClick={()=>void compare(true)}>اختبار التوافق المرجعي — 5 أسئلة لكل نموذج</button>
   <small>الدرجة تخص هذه المجموعة الثابتة فقط. لا تثبت جودة النموذج العامة؛ الإجابات الغامضة أو المكررة غير قابلة للتقييم.</small>
   <p role="status">{results.length} / 2 استجابة مكتملة — لا يعني نجاح الاستجابة صحة التحليل أو تنفيذ اختبارات.</p>
@@ -51,5 +66,6 @@ export default function StarQualityPanel(){
   <small>لا يُرفع الملف إلى أي خادم. التقرير المستورد إفادة غير موقعة وليس دليلاً مستقلاً على التشغيل.</small>
   {importError&&<p className="ai-error" role="alert">{importError}</p>}
   {report&&<div className="ai-result" role="status"><p dir="auto">النموذج: {report.model}</p><p>الزمن: {report.elapsed_seconds} s</p><p>Tokens/s: {report.tokens_per_second??'غير متاح'}</p><p>نتائج الفحص الثابت: {report.findings.length}</p>{report.findings.map((f,i)=><p key={i} dir="ltr">{f.rule} — line {f.line}</p>)}<p>الكود المولّد لم يُنفّذ.</p></div>}
+  <EngineeringMemoryPanel memory={memory} onChange={updateMemory} storageError={storageError}/>
  </section>;
 }
