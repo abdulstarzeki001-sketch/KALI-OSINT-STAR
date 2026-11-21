@@ -36,7 +36,7 @@ export async function handleCyberPost({request,env},fetchUpstream=globalThis.fet
   let data;
   try {
     const raw=await request.text();
-    if(raw.length>21000)return json({error:'Request too large'},413);
+    if(raw.length>70000)return json({error:'Request too large'},413);
     data=JSON.parse(raw);
   }catch{return json({error:'Invalid JSON'},400);}
   if(!data||typeof data!=='object')return json({error:'Invalid body'},422);
@@ -48,6 +48,25 @@ export async function handleCyberPost({request,env},fetchUpstream=globalThis.fet
       if(!KINDS.has(data.kind)||typeof data.artifact!=='string'||data.artifact.length<3||data.artifact.length>16000)
         return json({error:'Invalid audit'},422);
       path='/v1/security/audit';payload={kind:data.kind,artifact:data.artifact};break;
+    case 'deep_audit':
+      if(!Array.isArray(data.files)||data.files.length<1||data.files.length>8||
+        (data.format!==undefined&&!['json','sarif'].includes(data.format)))
+        return json({error:'Invalid deep audit'},422);
+      {
+        let total=0;
+        const paths=new Set();
+        for(const file of data.files){
+          if(!file||typeof file.path!=='string'||file.path.length>180||
+             typeof file.content!=='string'||file.content.trim().length<3||
+             file.content.length>16000||paths.has(file.path))return json({error:'Invalid audit file'},422);
+          paths.add(file.path);
+          total+=file.content.length;
+        }
+        if(total>48000)return json({error:'Audit input too large'},413);
+      }
+      path='/v1/security/deep-audit';
+      payload={format:data.format||'json',files:data.files.map(f=>({path:f.path,content:f.content}))};
+      break;
     case 'review':
       if(!KINDS.has(data.kind)||typeof data.artifact!=='string'||data.artifact.length<3||data.artifact.length>16000||
          typeof data.model!=='string'||data.model.length>48||

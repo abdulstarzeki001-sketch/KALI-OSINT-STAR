@@ -103,3 +103,32 @@ test('Cloudflare fallback is included even if the independent Railway gateway re
   const out=await r.json();
   assert.equal(out.data[0].id,'llama-cloudflare');
 });
+
+test('multi-file deep audit relays only bounded source files to authenticated Railway',async()=>{
+  const f=fixture();
+  const body={action:'deep_audit',format:'sarif',files:[{path:'app.py',content:'yaml.load(input)'}],
+    command:'whoami',url:'https://evil.example'};
+  const anonymous=await handleCyberPost({request:req(body,{jwt:''}),env:{}},f.fetchUpstream);
+  assert.equal(anonymous.status,401);
+  const response=await handleCyberPost({request:req(body),env:{}},f.fetchUpstream);
+  assert.equal(response.status,200);
+  assert.equal(f.seen.length,1);
+  assert.equal(f.seen[0].url,'https://star-ai-cyber-gateway-production.up.railway.app/v1/security/deep-audit');
+  assert.equal(f.seen[0].options.headers.authorization,'Bearer '+ownerToken);
+  assert.deepEqual(JSON.parse(f.seen[0].options.body),{format:'sarif',files:body.files});
+});
+test('deep audit file count, size, malformed format rejected before Railway',async()=>{
+  const f=fixture();
+  const bad=[
+    {action:'deep_audit',files:[]},
+    {action:'deep_audit',files:[{path:'x.py',content:'a'}]},
+    {action:'deep_audit',files:[{path:'x.py',content:'x'.repeat(16001)}]},
+    {action:'deep_audit',format:'shell',files:[{path:'x.py',content:'yaml.load(a)'}]},
+    {action:'deep_audit',files:Array.from({length:9},(_,i)=>({path:i+'.py',content:'yaml.load(a)'}))}
+  ];
+  for(const x of bad){
+    const response=await handleCyberPost({request:req(x),env:{}},f.fetchUpstream);
+    assert.ok([413,422].includes(response.status));
+  }
+  assert.equal(f.seen.length,0);
+});
