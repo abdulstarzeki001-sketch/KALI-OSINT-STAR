@@ -19,3 +19,28 @@
 .cyber-review{border-top:1px solid #39445e;margin-top:14px;padding-top:16px;color:#d5dbec;overflow-wrap:anywhere}
 .cyber-review pre{max-width:100%;overflow:auto}
 @media(max-width:900px){.cyber-grid{grid-template-columns:1fr}.cyber-ai-page{padding-inline:6px}}
+
+.cyber-deep{gap:12px}.cyber-deep-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.cyber-deep-head h2{font-size:clamp(1.1rem,2vw,1.45rem);margin:7px 0}
+.cyber-deep-head p{color:#b5bed1;line-height:1.65;max-width:820px;margin:0}
+.cyber-deep-tag{color:#b6c6ff;background:#27334d;border:1px solid #53648a;border-radius:12px;padding:9px 12px;white-space:nowrap}
+.cyber-deep-controls{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.cyber-deep-controls .cyber-main-btn{min-width:160px}
+.cyber-upload{position:relative;display:flex;align-items:center;justify-content:center;min-width:180px;min-height:43px;
+  background:#243659;color:#eef0fc!important;padding:8px 12px;border:1px solid #57638f;border-radius:10px;cursor:pointer}
+.cyber-upload input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.cyber-deep-path{display:flex;flex:1;flex-direction:column;gap:5px;min-width:190px}
+.cyber-file-list{display:flex;flex-wrap:wrap;gap:8px}
+.cyber-file{display:flex;align-items:center;gap:8px;max-width:100%;background:#18273e;border:1px solid #374b6e;border-radius:8px;padding:5px 10px;color:#bac8e4;font-size:.85rem;overflow-wrap:anywhere}
+.cyber-file button{background:transparent;border:0;color:#f0b4ba;cursor:pointer;font-size:1.2rem}
+.cyber-deep-feedback{font-size:.88rem;color:#a8d8cb;margin:0}
+.cyber-deep-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.cyber-deep-metrics div{display:flex;flex-direction:column;gap:5px;border:1px solid #31415b;border-radius:9px;padding:11px;background:#172237}
+.cyber-deep-metrics strong{font-size:1.25rem;color:#eef3ff}
+.cyber-deep-metrics span{font-size:.77rem;color:#a6b7d1}
+.cyber-deep-actions{display:flex;flex-wrap:wrap;gap:8px}
+.cyber-deep-actions button{border:1px solid #4b6288;border-radius:9px;background:#20395c;color:#ecf2ff;padding:10px 12px;cursor:pointer}
+.cyber-deep-actions button:disabled{cursor:not-allowed;opacity:.4}
+.cyber-deep-findings{max-height:460px;overflow:auto;display:grid;gap:8px;align-content:start}
+.cyber-location{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.8rem;color:#a9c7ff;overflow-wrap:anywhere}
+@media(max-width:600px){.cyber-deep-head{flex-direction:column}.cyber-deep-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.cyber-deep-controls>*{width:100%}}

@@ -7,6 +7,12 @@ type Kind='code'|'config'|'headers'|'logs'|'report';
 type Finding={id:string;severity:string;line:number;recommendation:string; evidence:string};
 type Audit={kind:string;lines_analyzed:number;findings:Finding[];counts:Record<string,number>;limitation:string};
 type Review={analysis:string;model:string;local_audit:Audit;notice:string};
+type SourceFile={path:string;content:string};
+type DeepFinding={id:string;title:string;severity:string;cwe:string;confidence:string;path:string;line:number;recommendation:string};
+type DeepAudit={schema:number;engine:string;summary:{
+  files_analyzed:number;lines_analyzed:number;rules_available:number;findings:number;
+  risk_priority_score:number;counts:Record<string,number>;truncated:boolean
+};findings:DeepFinding[];limitation:string};
 type ApiError={error?:string|{code?:string;message?:string}};
 const KINDS:{id:Kind;label:string}[]=[
   {id:'code',label:'شيفرة برمجية'}, {id:'config',label:'إعدادات أمنية'},
@@ -26,6 +32,12 @@ async function invoke(action:string,payload:Record<string,unknown>={}) {
   }
   return data;
 }
+function saveReport(name:string, data:unknown){
+  const content=JSON.stringify(data,null,2);
+  const link=URL.createObjectURL(new Blob([content],{type:'application/json;charset=utf-8'}));
+  const a=document.createElement('a');a.href=link;a.download=name;a.click();
+  window.setTimeout(()=>URL.revokeObjectURL(link),1000);
+}
 export default function CyberAIPanel(){
   const [kind,setKind]=useState<Kind>('code');
   const [artifact,setArtifact]=useState('');
@@ -37,6 +49,14 @@ export default function CyberAIPanel(){
   const [error,setError]=useState('');
   const [availability,setAvailability]=useState('جاري فحص الاتصال المحمي...');
   const [running,setRunning]=useState<'audit'|'review'|null>(null);
+  const [filePath,setFilePath]=useState('snippet.js');
+  const [uploadedFiles,setUploadedFiles]=useState<SourceFile[]>([]);
+  const [deepReport,setDeepReport]=useState<DeepAudit|null>(null);
+  const [scannedFiles,setScannedFiles]=useState<SourceFile[]>([]);
+  const [deepRunning,setDeepRunning]=useState<'scan'|'export'|'explain'|null>(null);
+  const [deepError,setDeepError]=useState('');
+  const [deepFeedback,setDeepFeedback]=useState('');
+  const deepInputCount=uploadedFiles.length+(artifact.trim().length>=3?1:0);
   useEffect(()=>{
     let alive=true;
     invoke('models').then(data=>{
@@ -59,6 +79,77 @@ export default function CyberAIPanel(){
     }catch(err){setError(err instanceof Error?err.message:'فشل طلب التدقيق');}
     finally{setRunning(null);}
   }
+  async function readSources(input:FileList|null){
+    if(!input?.length)return;
+    setDeepError('');setDeepFeedback('');
+    try{
+      const files=Array.from(input);
+      if(files.length>8)throw Error('الحد الأقصى 8 ملفات في الطلب الواحد');
+      const parsed:SourceFile[]=[];
+      for(const file of files){
+        if(file.size>35000)throw Error('الملف '+file.name+' كبير، الحد 16000 حرف');
+        const content=await file.text();
+        if(content.includes('\\0')||content.trim().length<3||content.length>16000)
+          throw Error('ملف غير نصي أو يتجاوز الحد: '+file.name);
+        parsed.push({path:file.name,content});
+      }
+      if(parsed.reduce((sum,f)=>sum+f.content.length,0)>48000)
+        throw Error('مجموع الملفات أكبر من 48000 حرف');
+      if(new Set(parsed.map(f=>f.path)).size!==parsed.length)
+        throw Error('هناك ملفات بنفس الاسم. غيّر اسم أحد الملفات');
+      setUploadedFiles(parsed);
+      setDeepFeedback('تم تحميل '+parsed.length+' ملفات في ذاكرة الصفحة فقط');
+    }catch(e){setDeepError(e instanceof Error?e.message:'تعذر فتح الملفات');}
+  }
+  function sourceInputs():SourceFile[]{
+    const items=[...uploadedFiles];
+    if(artifact.trim().length>=3)items.push({path:filePath.trim(),content:artifact});
+    if(items.length<1||items.length>8)throw Error('اختر بين ملف واحد وثمانية ملفات');
+    if(items.some(f=>!f.path||f.content.length>16000))
+      throw Error('اسم الملف مطلوب وحجم كل ملف لا يتجاوز 16000 حرف');
+    if(items.reduce((n,f)=>n+f.content.length,0)>48000)
+      throw Error('مجموع النصوص يتجاوز 48000 حرف');
+    if(new Set(items.map(f=>f.path)).size!==items.length)throw Error('تكرار اسم ملف');
+    return items;
+  }
+  async function runDeep(){
+    if(deepRunning)return;
+    setDeepRunning('scan');setDeepError('');setDeepReport(null);
+    try{
+      const files=sourceInputs();
+      const data=await invoke('deep_audit',{files,format:'json'});
+      if(data.schema!==1||!Array.isArray(data.findings))throw Error('استجابة Deep Audit غير صالحة');
+      setScannedFiles(files);
+      setDeepReport(data as unknown as DeepAudit);
+    }catch(e){setDeepError(e instanceof Error?e.message:'فشل التدقيق');}
+    finally{setDeepRunning(null);}
+  }
+  async function exportSarif(){
+    if(!scannedFiles.length||!deepReport||deepRunning)return;
+    setDeepRunning('export');setDeepError('');
+    try{
+      const data=await invoke('deep_audit',{files:scannedFiles,format:'sarif'});
+      if(data.version!=='2.1.0')throw Error('صيغة SARIF غير مدعومة');
+      saveReport('star-cyber-deep-audit.sarif',data);
+    }catch(e){setDeepError(e instanceof Error?e.message:'تعذر توليد SARIF');}
+    finally{setDeepRunning(null);}
+  }
+  async function explainDeep(){
+    if(!deepReport||!model||deepRunning)return;
+    setDeepRunning('explain');setDeepError('');setReview(null);
+    try{
+      const summary=[
+        'This is a heuristic static analysis report, not confirmed vulnerabilities.',
+        JSON.stringify(deepReport.summary),
+        ...deepReport.findings.slice(0,30).map(f=>
+          f.path+':'+f.line+' '+f.id+' '+f.cwe+' '+f.severity+' — '+f.recommendation)
+      ].join('\\n').slice(0,15000);
+      const data=await invoke('review',{kind:'report',artifact:summary,model,
+        question:question||'رتب الأولويات، اشرح المخاطر بدقة، واقترح طريقة تحقق وإصلاح بدون افتراض أن الثغرة مؤكدة'});
+      setReview(data as unknown as Review);
+    }catch(e){setDeepError(e instanceof Error?e.message:'فشل تفسير التقرير بواسطة AI');}
+    finally{setDeepRunning(null);}
+  }
   return <section className="cyber-ai-page page-animate" dir="rtl">
     <header className="cyber-heading">
       <span className="eyebrow">STAR AI / AUTHORIZED SECURITY REVIEW</span>
@@ -66,6 +157,67 @@ export default function CyberAIPanel(){
       <p>مراجعة أكواد وتكوينات وسجلات وأنظمة حماية بناءً على الأدلة التي تزودنا بها، بدون إجراء مسح على أي هدف أو تشغيل أوامر غير مصرح بها.</p>
     </header>
     <div className="cyber-notice" role="status">{availability}</div>
+
+    <section className="cyber-deep cyber-pane" aria-label="فحص أمني عميق متعدد الملفات">
+      <div className="cyber-deep-head">
+        <div><span className="eyebrow">STAR DEEP AUDIT / OFFLINE ENGINE</span>
+          <h2>فحص سيبراني معمّق لـ26 قاعدة أمنية</h2>
+          <p>افحص ملفات مشروعك بشكل محلي على خادم Railway، مع CWE وأرقام الأسطر ونتائج قابلة للتصدير إلى GitHub SARIF. لا يحتاج نموذج AI أو GPU.</p>
+        </div>
+        <span className="cyber-deep-tag">SAST / SARIF</span>
+      </div>
+      <div className="cyber-deep-controls">
+        <label className="cyber-upload" htmlFor="cyber-deep-files">
+          اختر حتى 8 ملفات نصية
+          <input id="cyber-deep-files" type="file" multiple
+            onChange={e=>{const files=e.currentTarget.files;void readSources(files);e.currentTarget.value='';}}/>
+        </label>
+        <div className="cyber-deep-path"><label htmlFor="cyber-source-name">اسم النص الملصوق بالأسفل</label>
+          <input id="cyber-source-name" value={filePath} maxLength={180}
+            onChange={e=>setFilePath(e.target.value)} dir="ltr" placeholder="src/app.py"/>
+        </div>
+        <button type="button" className="cyber-main-btn"
+          disabled={!!deepRunning||deepInputCount===0||deepInputCount>8} onClick={()=>void runDeep()}>
+          {deepRunning==='scan'?'جارٍ فحص الملفات...':'شغّل Deep Audit'}
+        </button>
+      </div>
+      {uploadedFiles.length>0&&<div className="cyber-file-list" aria-label="الملفات المختارة">
+        {uploadedFiles.map(f=><div className="cyber-file" key={f.path}>
+          <span dir="ltr">{f.path} · {f.content.length} حرف</span>
+          <button type="button" aria-label={'حذف '+f.path} onClick={()=>setUploadedFiles(old=>old.filter(x=>x.path!==f.path))}>×</button>
+        </div>)}
+      </div>}
+      <small>النص الموجود في خانة «الكود / السجل / التقرير» أدناه يُضاف كملف مستقل إذا لم يكن فارغاً. لا ترسل أسراراً حقيقية أو ملفات إنتاج حساسة.</small>
+      {deepFeedback&&<p role="status" className="cyber-deep-feedback">{deepFeedback}</p>}
+      {deepError&&<p role="alert" className="cyber-error">{deepError}</p>}
+      {deepReport&&<div className="cyber-deep-output" aria-live="polite">
+        <div className="cyber-deep-metrics">
+          <div><strong>{deepReport.summary.findings}</strong><span>مؤشر أمني</span></div>
+          <div><strong>{deepReport.summary.files_analyzed}</strong><span>ملفات</span></div>
+          <div><strong>{deepReport.summary.risk_priority_score}/100</strong><span>أولوية داخلية وليست CVSS</span></div>
+          <div><strong>{deepReport.summary.rules_available}</strong><span>قواعد فحص</span></div>
+        </div>
+        <div className="cyber-deep-actions">
+          <button type="button" onClick={()=>saveReport('star-cyber-deep-audit.json',deepReport)}>تنزيل JSON</button>
+          <button type="button" disabled={!!deepRunning} onClick={()=>void exportSarif()}>
+            {deepRunning==='export'?'جارٍ التصدير...':'تنزيل SARIF لـGitHub'}
+          </button>
+          <button type="button" disabled={!!deepRunning||!model} onClick={()=>void explainDeep()}>
+            {deepRunning==='explain'?'جارٍ التحليل...':'شرح المؤشرات بواسطة STAR AI'}
+          </button>
+        </div>
+        {deepReport.summary.truncated&&<p className="cyber-error">النتائج وصلت إلى الحد الأقصى 100 مؤشر؛ قلل الملفات أو قسم الفحص.</p>}
+        <div className="cyber-deep-findings">
+          {deepReport.findings.length?deepReport.findings.map((f,i)=><article className="cyber-finding" key={f.id+f.path+f.line+i}>
+            <div><strong dir="ltr">{f.id} · {f.cwe}</strong><span>{f.severity} · {f.confidence}</span></div>
+            <div className="cyber-location" dir="ltr">{f.path}:{f.line} — {f.title}</div>
+            <p>{f.recommendation}</p>
+          </article>):<p>لا توجد مؤشرات تطابق القواعد المستخدمة. هذا لا يثبت خلو الملفات من الثغرات.</p>}
+        </div>
+        <small>{deepReport.limitation}</small>
+      </div>}
+    </section>
+
     <div className="cyber-grid">
       <form className="cyber-pane" onSubmit={e=>void execute('audit',e)}>
         <h2>01 — البيانات المراد تدقيقها</h2>

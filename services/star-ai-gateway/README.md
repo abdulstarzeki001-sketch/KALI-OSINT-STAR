@@ -30,3 +30,8 @@ Run npm test from this directory. CI runs these tests on PRs. For live testing, 
 ## Cloudflare Access JWT integration
 
 For the user's existing KALI-OSINT-STAR Pages frontend, the gateway can validate the Cloudflare Access app JWT forwarded from the server-side Pages Function. Configure `STAR_ACCESS_TEAM_DOMAIN` and `STAR_ACCESS_AUD` on Railway using the same public team domain and application AUD as `apps/web/access-jwt.js`. Optionally limit identities via `STAR_ACCESS_ALLOWED_EMAILS`. This **does not** remove the strong separate `STAR_GATEWAY_TOKEN` method used for owner CLI access. The Pages Function verifies the same JWT first, then forwards it only to the pinned Railway HTTPS hostname. No gateway secret is injected into Vite or exposed to Safari. Live model inference still requires upstream provider keys.
+
+## STAR Cyber Deep Audit — multi-file SAST
+
+POST `/v1/security/deep-audit` with `{"files":[{"path":"src/app.py","content":"yaml.load(data)"}],"format":"json"}`.
+Requires existing Gateway authorization (bearer key or verified Access JWT). It inspects text heuristically with 26 static rules and reports path, line, severity, CWE, recommendation and an internal priority score. It never executes source code, performs live scans or contacts a model. Limits: 8 files, 16,000 characters/file, 48,000 total. Use `"format":"sarif"` for a SARIF 2.1.0 JSON object suitable for later GitHub Code Scanning upload by an authorized workflow (it does **not** upload automatically). Source line snippets are not returned. False positives and false negatives remain possible; this does not replace CodeQL, Semgrep, or manual review.
