@@ -1,0 +1,10 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {parseGpuSnapshot} from '../src/gpu-snapshot.ts';
+const raw={schema:1,source:'local-host-snapshot',capturedAt:'2026-11-22T00:00:00+00:00',gpus:[{index:0,name:'Synthetic GPU',utilization:98,usedMiB:8000,totalMiB:16000,temperatureC:60}],models:[{name:'sample:1b',sizeBytes:1000,vramBytes:800}],ram:{totalBytes:1000,availableBytes:500},storage:{totalBytes:2000,freeBytes:800},cpuCount:8,loadAverage:[1,2,3]};
+const parse=(v)=>parseGpuSnapshot(JSON.stringify(v));
+test('valid snapshot retains resource measurements',()=>{const r=parse(raw);assert.equal(r.gpus[0].usedMiB,8000);assert.equal(r.models[0].vramBytes,800);assert.equal(r.ram.available,500)});
+test('unavailable GPU differs from empty models',()=>{const r=parse({...raw,gpus:null,models:[]});assert.equal(r.gpus,null);assert.deepEqual(r.models,[])});
+test('reject overflowing VRAM and impossible percentages',()=>{for(const g of [{...raw.gpus[0],usedMiB:17000},{...raw.gpus[0],utilization:101}])assert.throws(()=>parse({...raw,gpus:[g]}))});
+test('reject invalid resources and timestamps',()=>{assert.throws(()=>parse({...raw,ram:{totalBytes:1,availableBytes:2}}));assert.throws(()=>parse({...raw,capturedAt:'today'}));assert.throws(()=>parse({...raw,loadAverage:[1,2]}))});
+test('no invented costs or throughput; unknown fields discarded',()=>{const r=parse({...raw,actualCost:0,tokensPerSecond:999,secret:'not retained'});assert.equal(Object.hasOwn(r,'actualCost'),false);assert.equal(Object.hasOwn(r,'tokensPerSecond'),false);assert.equal(Object.hasOwn(r,'secret'),false)});

@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import GpuSnapshotPanel from './GpuSnapshotPanel';
 import {appendSample,parseUsage,remainingCooldown,summarizePerformance} from './performance-engine';
 import type {Sample} from './performance-engine';
 import {parseConnection} from './control-center';
@@ -47,5 +48,6 @@ export default function ControlHealthPanel(){
   {checkedAt&&<small dir="ltr">Last check: {checkedAt}</small>}
   <div className="ai-control-links"><a href="https://railway.com/project/9fdb180f-dd25-413a-9681-f3d37f08b159" target="_blank" rel="noopener noreferrer">إدارة Railway</a><a href="https://github.com/abdulstarzeki001-sketch/KALI-OSINT-STAR/actions" target="_blank" rel="noopener noreferrer">سجل GitHub Actions</a></div>
   <small>حالة البنية التحتية تُراجع من لوحات الإدارة؛ لا يتم افتراض أنها متصلة من نتيجة النموذج وحدها.</small>
+  <GpuSnapshotPanel/>
  </section>
 }
