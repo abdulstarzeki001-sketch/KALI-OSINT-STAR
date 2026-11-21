@@ -61,7 +61,7 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
     @app.get('/health')
     async def health():
         return {'ok':True,'service':'star-agent-cpu','tool_mode':'approval-gated',
-                'model_configured':True,'browser_hosts':sorted(engine.executor.hosts)}
+                'model_endpoint_configured':True,'allowed_host_count':len(engine.executor.hosts)}
     @app.post('/api/tasks',status_code=202)
     async def submit(req:Request):
         auth(req)
