@@ -1,0 +1,20 @@
+name: kali-star-cpu-ai
+services:
+  star-ai-cpu:
+    build: .
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      LLAMA_API_KEY: ${STAR_CPU_API_KEY:?Set STAR_CPU_API_KEY in .env}
+      LLAMA_CACHE: /models
+    volumes:
+      - qwen_model_cache:/models
+    cpus: 4
+    mem_limit: 8g
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+volumes:
+  qwen_model_cache:
