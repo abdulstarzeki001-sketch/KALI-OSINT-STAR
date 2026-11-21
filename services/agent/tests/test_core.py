@@ -18,6 +18,11 @@ def test_paths_and_secrets(tmp_path):
     with pytest.raises(ValueError):ex.create_file('README.md','bad')
     assert 'README.md' in ex.list_files()
     assert 'README.md:1' in ex.search_text('hello')
+    (ex.root/'.env.production').write_text('private markerXYZ')
+    (ex.root/'secrets.json').write_text('private markerXYZ')
+    assert 'secrets.json' not in ex.list_files()
+    assert '.env.production' not in ex.list_files()
+    assert 'markerXYZ' not in ex.search_text('markerXYZ')
 
 def test_symlink_secret_read_blocked(tmp_path):
     ex=executor(tmp_path)
