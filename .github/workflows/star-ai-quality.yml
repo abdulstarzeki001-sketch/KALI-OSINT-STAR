@@ -19,3 +19,7 @@ jobs:
           python-version: '3.12'
       - run: python -m unittest -v scripts.test_star_ai_quality
       - run: python -m json.tool opencode.json > /dev/null
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - run: node --experimental-strip-types --test apps/web/tests/quality-report.test.mjs
