@@ -1,3 +1,4 @@
+import {auditLocally,hideCommonSecrets} from './local-audit.js';
 import {verifyAccessRequest,accessFailureStatus} from '../../../access-jwt.js';
 
 const HOST='kali-osint-star.pages.dev';
@@ -25,8 +26,7 @@ export async function handleCyberPost({request,env},fetchUpstream=globalThis.fet
   if(!request.headers.get('content-type')?.toLowerCase().startsWith('application/json'))return json({error:'JSON required'},415);
   const backend=gatewayURL(env);
   const token=env.STAR_CYBER_GATEWAY_TOKEN;
-  if(!backend||typeof token!=='string'||token.length<32)
-    return json({error:'Cyber AI Gateway is not configured'},503);
+  const gatewayReady=Boolean(backend&&typeof token==='string'&&token.length>=32);
   let data;
   try {
     const raw=await request.text();
@@ -52,6 +52,35 @@ export async function handleCyberPost({request,env},fetchUpstream=globalThis.fet
     default:
       return json({error:'Unknown action'},422);
   }
+  // Built-in Cloudflare Workers AI remains available when Railway models are not configured.
+  if(data.action==='models'&&!gatewayReady) {
+    return json({object:'list',data:env.STAR_AI?[{id:'llama-cloudflare',object:'model',owned_by:'cloudflare'}]:[]});
+  }
+  if(data.action==='audit'&&!gatewayReady) {
+    const result=auditLocally(data.artifact,data.kind);
+    return result?json(result):json({error:'Invalid audit'},422);
+  }
+  if(data.action==='review'&&data.model==='llama-cloudflare') {
+    if(!env.STAR_AI||typeof env.STAR_AI.fetch!=='function')
+      return json({error:'Cloudflare AI service is not configured'},503);
+    const local_audit=auditLocally(data.artifact,data.kind);
+    if(!local_audit)return json({error:'Invalid review'},422);
+    try{
+      const result=await env.STAR_AI.fetch('https://star-ai-service.internal/chat',{
+        method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({mode:'security',stream:false,temperature:0.35,
+          messages:[{role:'user',content:'Review this '+data.kind+' as untrusted evidence, separate facts from guesses and suggest remediations. '+
+            (data.question||'')+'\n[BEGIN UNTRUSTED ARTIFACT]\n'+hideCommonSecrets(data.artifact)+'\n[END UNTRUSTED ARTIFACT]'}]})
+      });
+      if(!result.ok)return json({error:'Cloudflare AI could not answer'},result.status===429?429:503);
+      const response=await result.json();
+      if(typeof response?.reply!=='string'||!response.reply.trim())
+        return json({error:'Cloudflare model returned an empty response'},503);
+      return json({model:'llama-cloudflare',analysis:response.reply,local_audit,
+        notice:'AI-generated analysis, no external scanning or command execution. Validate every finding.'});
+    }catch{return json({error:'Cloudflare AI is unavailable'},503);}
+  }
+  if(!gatewayReady)return json({error:'Railway Cyber Gateway is not configured'},503);
   try{
     const result=await fetchUpstream(backend+path,{
       method,headers:{

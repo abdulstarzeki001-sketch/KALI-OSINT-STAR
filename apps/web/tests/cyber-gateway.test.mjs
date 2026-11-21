@@ -61,3 +61,24 @@ test('model discovery is server-side and unknown action rejected',async()=>{
 test('returns POST-only response for GET',async()=>{
   assert.equal((await onRequestGet()).status,405);
 });
+
+test('without Railway, local audit remains real and does not call a model',async()=>{
+  const f=fixture();
+  const r=await handleCyberPost({request:req({action:'audit',kind:'code',artifact:'const password="test-secret-value";'}),env:{}},f.fetchUpstream);
+  assert.equal(r.status,200);
+  const data=await r.json();
+  assert.equal(data.findings[0].id,'HARDCODED_SECRET');
+  assert.equal(JSON.stringify(data).includes('test-secret-value'),false);
+  assert.equal(f.seen.length,0);
+});
+test('Cloudflare fallback exposes its model only when service binding exists',async()=>{
+  const f=fixture(),env={STAR_AI:{fetch:async()=>new Response(JSON.stringify({reply:'Cyber advice'}),{
+    headers:{'content-type':'application/json'}})}};
+  const m=await handleCyberPost({request:req({action:'models'}),env},f.fetchUpstream);
+  assert.equal((await m.json()).data[0].id,'llama-cloudflare');
+  const r=await handleCyberPost({request:req({action:'review',model:'llama-cloudflare',
+    kind:'code',artifact:'const token="my-secret-1234";'}),env},f.fetchUpstream);
+  assert.equal(r.status,200);
+  assert.equal((await r.json()).analysis,'Cyber advice');
+  assert.equal(f.seen.length,0);
+});
