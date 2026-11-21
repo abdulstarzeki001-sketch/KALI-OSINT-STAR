@@ -10,5 +10,6 @@ RUN mkdir -p /app/services && touch /app/services/__init__.py \
 USER agent
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV HOME=/tmp
 EXPOSE 8787
 CMD ["uvicorn","services.agent.main:create_app","--factory","--host","0.0.0.0","--port","8787","--workers","1"]
