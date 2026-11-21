@@ -1,8 +1,9 @@
 import {useRef,useState} from 'react';
 import {QUALITY_FIXTURE,QUALITY_QUESTION,QUALITY_MODELS,parseReview,parseQualityReport} from './quality-report';
 import type {QualityModel} from './quality-report';
+import {benchmarkPrompt,BENCHMARK_INSTRUCTION,gradeBenchmark} from './verified-benchmark';
 
-type Result = {requested:QualityModel;model:string;analysis:string;elapsed:number};
+type Result = {requested:QualityModel;model:string;analysis:string;elapsed:number;grade?:ReturnType<typeof gradeBenchmark>};
 export default function StarQualityPanel(){
  const lock=useRef(false);
  const [busy,setBusy]=useState(false);
@@ -10,7 +11,7 @@ export default function StarQualityPanel(){
  const [errors,setErrors]=useState<string[]>([]);
  const [report,setReport]=useState<ReturnType<typeof parseQualityReport>|null>(null);
  const [importError,setImportError]=useState('');
- async function compare(){
+ async function compare(verified=false){
   if(lock.current)return;
   lock.current=true;setBusy(true);setResults([]);setErrors([]);
   try{
@@ -19,10 +20,10 @@ export default function StarQualityPanel(){
     const controller=new AbortController();
     const timeout=window.setTimeout(()=>controller.abort(),90000);
     try{
-     const r=await fetch('/api/ai/analyze',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','Accept':'application/json'},signal:controller.signal,body:JSON.stringify({report:QUALITY_FIXTURE,question:QUALITY_QUESTION,model:requested})});
+     const r=await fetch('/api/ai/analyze',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','Accept':'application/json'},signal:controller.signal,body:JSON.stringify({report:verified?benchmarkPrompt():QUALITY_FIXTURE,question:verified?BENCHMARK_INSTRUCTION:QUALITY_QUESTION,model:requested})});
      if(!r.ok||!(r.headers.get('content-type')||'').includes('application/json'))throw new Error('HTTP '+r.status+' — تحقق من الجلسة وموارد النموذج');
      const answer=parseReview(await r.json(),requested);
-     setResults(previous=>[...previous,{requested,...answer,elapsed:Math.round(performance.now()-start)}]);
+     setResults(previous=>[...previous,{requested,...answer,elapsed:Math.round(performance.now()-start),grade:verified?gradeBenchmark(answer.analysis):undefined}]);
     }catch(e){setErrors(previous=>[...previous,requested+': '+(e instanceof Error?e.message:'فشل الاتصال')]);}
     finally{window.clearTimeout(timeout);}
    }
@@ -41,9 +42,11 @@ export default function StarQualityPanel(){
   <p>مقارنة مستقلة بين Qwen3-Coder 30B وLlama عبر البوابة المصادق عليها. يُرسل تمرين مصطنع فقط لكل نموذج؛ لا تُرسل ملفاتك أو إجابة النموذج الأول إلى الطرف الآخر. قد تُحتسب رسوم الاستدلال المعتادة.</p>
   <details><summary>عرض حالة الاختبار المصطنعة</summary><pre className="ai-source-view" dir="ltr">{QUALITY_FIXTURE}</pre></details>
   <button type="button" disabled={busy} onClick={()=>void compare()}>{busy?'جارٍ المقارنة...':'اختبار النموذجين ومقارنة المراجعة'}</button>
+  <button type="button" disabled={busy} onClick={()=>void compare(true)}>اختبار التوافق المرجعي — 5 أسئلة لكل نموذج</button>
+  <small>الدرجة تخص هذه المجموعة الثابتة فقط. لا تثبت جودة النموذج العامة؛ الإجابات الغامضة أو المكررة غير قابلة للتقييم.</small>
   <p role="status">{results.length} / 2 استجابة مكتملة — لا يعني نجاح الاستجابة صحة التحليل أو تنفيذ اختبارات.</p>
   {errors.map((e,i)=><p key={i} role="alert" className="ai-error">{e}</p>)}
-  <div className="ai-grid">{results.map(r=><article className="ai-panel" key={r.requested}><h2 dir="auto">{r.model}</h2><p>{r.elapsed} ms · زمن الطلب من المتصفح، وليس سرعة توليد الرموز</p><pre dir="auto" className="ai-source-view">{r.analysis}</pre></article>)}</div>
+  <div className="ai-grid">{results.map(r=><article className="ai-panel" key={r.requested}><h2 dir="auto">{r.model}</h2><p>{r.elapsed} ms · زمن الطلب من المتصفح، وليس سرعة توليد الرموز</p>{r.grade&&<div role="status"><h3>{r.grade.correct} / {r.grade.total} إجابات صحيحة</h3><p>{r.grade.complete?"التقييم مكتمل":"بعض الإجابات غير قابلة للتقييم"} · {r.grade.version}</p>{r.grade.details.map(d=><p key={d.id} dir="auto">{d.question} — {d.status==="correct"?"صحيح":d.status==="incorrect"?"خطأ":"غير قابل للتقييم"} ({d.answer??"—"} / {d.expected}) {d.reference&&<a href={d.reference} target="_blank" rel="noopener noreferrer">مرجع</a>}</p>)}</div>}<pre dir="auto" className="ai-source-view">{r.analysis}</pre></article>)}</div>
   <label className="ai-upload">استيراد تقرير GPU JSON محلياً<input type="file" accept=".json,application/json" onChange={e=>void importReport(e.target.files?.[0])}/></label>
   <small>لا يُرفع الملف إلى أي خادم. التقرير المستورد إفادة غير موقعة وليس دليلاً مستقلاً على التشغيل.</small>
   {importError&&<p className="ai-error" role="alert">{importError}</p>}
