@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {onRequestPost,onRequestGet} from '../functions/api/ai/analyze.js';
+import {handleAnalyzePost,onRequestPost,onRequestGet} from '../functions/api/ai/analyze.js';
 import {ownerToken, mint, attackerPair, resetCerts} from './access-test-keys.mjs';
 
 const ENDPOINT='https://kali-osint-star.pages.dev/api/ai/analyze';
@@ -58,4 +58,29 @@ test('rejects forged and login-page meta Access assertions without forwarding',a
   assert.equal(r.status,401);
  }
  assert.equal(s.calls,0);
+});
+
+test('private report analysis redacts recognized secrets and preserves long reports',async()=>{
+ const s=service();
+ const secret='synthetic-credential-test';
+ const report=('password: '+secret+' '+ 'a'.repeat(18000)).slice(0,17970)+' report-end-marker';
+ const request=input({body:JSON.stringify({model:'qwen3-coder-vast',report,question:'Summarize.'})});
+ let calls=0;
+ const response=await handleAnalyzePost({request,env:{STAR_AI:s}},async(url,options)=>{
+  calls++;
+  assert.match(url,/\.up\.railway\.app\/v1\/chat\/completions$/);
+  const payload=JSON.parse(options.body);
+  assert.equal(payload.model,'qwen3-coder-vast');
+  assert.equal(payload.mode,'security');
+  assert.equal(payload.stream,false);
+  assert.ok(payload.messages.every(m=>m.role==='user'&&m.content.length<5000));
+  assert.match(options.body,/\[REDACTED\]/);
+  assert.match(options.body,/report-end-marker/);
+  assert.ok(!options.body.includes(secret));
+  return Response.json({choices:[{message:{content:'The report needs a defensive review.'}}]});
+ });
+ assert.equal(calls,1);
+ assert.equal(s.calls,0);
+ assert.equal(response.status,200);
+ assert.equal((await response.json()).model,'qwen3-coder-vast');
 });

@@ -70,3 +70,6 @@
  background:#061c22;border-radius:6px;padding:9px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto}
 @media(max-width:760px){.ai-tool-command{padding:9px}.ai-tool-command-row{flex-wrap:wrap}
  .ai-tool-command-row input{flex:1 1 100%}.ai-tool-command-row button{width:100%}}
+.ai-model-picker{display:flex;align-items:center;flex-wrap:wrap;gap:8px;color:#baccda;font-size:13px}
+.ai-model-picker select{max-width:100%;background:#071421;color:#ecf5f7;border:1px solid #395063;border-radius:10px;padding:9px 12px;font:inherit}
+.ai-model-picker select:focus-visible{outline:2px solid #77dac8;outline-offset:2px}

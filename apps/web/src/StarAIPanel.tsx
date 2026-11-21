@@ -1,5 +1,7 @@
 import {useState} from 'react';
 import SafeMarkdown from './SafeMarkdown';
+import {AI_MODELS,PRIVATE_MODEL} from './ai-models';
+import type {AIModel} from './ai-models';
 import './star-ai.css';
 
 type Answer = {status?:string;model?:string;analysis?:string;notice?:string;error?:string};
@@ -15,6 +17,7 @@ export default function StarAIPanel() {
   const [question,setQuestion]=useState('');
   const [analysis,setAnalysis]=useState('');
   const [model,setModel]=useState('');
+  const [reportModel,setReportModel]=useState<AIModel>(PRIVATE_MODEL);
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(false);
   const [filename,setFilename]=useState('');
@@ -76,7 +79,7 @@ export default function StarAIPanel() {
         headers:{'Content-Type':'application/json','Accept':'application/json'},
         credentials:'same-origin',
         cache:'no-store',
-        body:JSON.stringify({report:text,question:prompt})
+        body:JSON.stringify({report:text,question:prompt,model:reportModel})
       });
     } catch {
       throw new Error('تعذر الوصول إلى التحليل. تأكد من تسجيل الدخول عبر Cloudflare Access ثم أعد المحاولة.');
@@ -126,8 +129,14 @@ export default function StarAIPanel() {
     const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='STAR-AI-analysis.md';a.click();URL.revokeObjectURL(u);
   }
   return <section className="star-ai page-animate" dir="rtl">
-    <header className="ai-heading"><div><span className="eyebrow">CLOUDFLARE WORKERS AI / DEFENSIVE ANALYSIS</span><h1>STAR AI <span>Security Analyst</span></h1><p>حلّل تقارير مختبراتك، سجلات الدفاع، ومخرجات الأدوات. التحليل اقتراحات مبنية على النص المُرسل وليس اختباراً حقيقياً لأي هدف.</p></div><span className="ai-chip">AI ASSISTANT</span></header>
-    <div className="ai-notice">خصوصية البيانات: النص الذي تُرسله سيُعالَج عبر Cloudflare Workers AI. لا تُرسل كلمات مرور، ملفات اعتماد، رموز API، بيانات شخصية أو تقارير حكومية غير مصرح بمشاركتها. لا يُحفظ النص في localStorage داخل هذه الصفحة.</div>
+    <header className="ai-heading"><div><h1>STAR AI <span>Security Analyst</span></h1><p>حلّل تقارير مختبراتك، سجلات الدفاع، ومخرجات الأدوات.</p></div></header>
+    <div className="ai-notice">النص يُعالَج على الخادم الذي تختاره أدناه. أزل كلمات المرور ورموز API والبيانات الحساسة قبل الإرسال.</div>
+    <label className="ai-model-picker">
+      <span>نموذج تحليل التقارير</span>
+      <select value={reportModel} disabled={loading||testState==='running'} onChange={e=>setReportModel(e.target.value as AIModel)}>
+        {AI_MODELS.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}
+      </select>
+    </label>
     <form className="ai-tool-command" onSubmit={e=>{e.preventDefault();void executeToolPrompt();}}>
       <div><strong>STAR AI → Railway Tool Executor</strong><small>مثال: «افحص Frida» أو «اعرض إصدار NetExec». ينفذ فحصاً محلياً ثابتاً فقط، ولا يرسل أوامر Shell أو يبدأ C2 تلقائياً.</small></div>
       <div className="ai-tool-command-row">

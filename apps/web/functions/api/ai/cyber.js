@@ -1,20 +1,12 @@
 import {auditLocally,hideCommonSecrets} from './local-audit.js';
 import {verifyAccessRequest,accessFailureStatus} from '../../../access-jwt.js';
+import {railwayGatewayAuth,railwayGatewayURL} from './railway-gateway.js';
 
 const HOST='kali-osint-star.pages.dev';
-const DEFAULT_GATEWAY='https://star-ai-cyber-gateway-production.up.railway.app';
 const KINDS=new Set(['code','config','headers','logs','report']);
 const HEADERS={'cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer'};
 function json(value,status=200){
   return new Response(JSON.stringify(value),{status,headers:{...HEADERS,'content-type':'application/json; charset=utf-8'}});
-}
-function gatewayURL(env) {
-  try{
-    const u=new URL(env.STAR_CYBER_GATEWAY_URL);
-    if(u.protocol!=='https:'||! /^[a-z0-9-]+\.up\.railway\.app$/.test(u.hostname)||
-       u.port||u.username||u.password||u.search||u.hash||u.pathname!=='/')return null;
-    return u.origin;
-  }catch{return null;}
 }
 export async function handleCyberPost({request,env},fetchUpstream=globalThis.fetch) {
   const url=new URL(request.url);
@@ -28,11 +20,8 @@ export async function handleCyberPost({request,env},fetchUpstream=globalThis.fet
   // If no custom origin/secret is configured, use the project's pinned Railway
   // gateway and relay the already verified Cloudflare Access app JWT.
   // Railway independently verifies signature, issuer, audience, expiry and type.
-  const backend=Object.hasOwn(env,'STAR_CYBER_GATEWAY_URL')?gatewayURL(env):DEFAULT_GATEWAY;
-  const token=env.STAR_CYBER_GATEWAY_TOKEN;
-  const sharedToken=typeof token==='string'&&token.length>=32?token:null;
+  const backend=railwayGatewayURL(env);
   const gatewayReady=Boolean(backend);
-  const bearer=sharedToken||request.headers.get('Cf-Access-Jwt-Assertion');
   let data;
   try {
     const raw=await request.text();
@@ -110,7 +99,7 @@ export async function handleCyberPost({request,env},fetchUpstream=globalThis.fet
   try{
     const result=await fetchUpstream(backend+path,{
       method,headers:{
-        'authorization':'Bearer '+bearer,
+        'authorization':railwayGatewayAuth(request,env),
         ...(payload?{'content-type':'application/json'}:{})
       },
       ...(payload?{body:JSON.stringify(payload)}:{}),
