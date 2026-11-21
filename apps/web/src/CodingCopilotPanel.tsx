@@ -24,9 +24,10 @@ export default function CodingCopilotPanel({name,source,onApply,onFlow,disabled}
  const [error,setError]=useState('');
  const controller=useRef<AbortController|null>(null);
  useEffect(()=>()=>controller.current?.abort(),[]);
+ useEffect(()=>{setConsent(false);setReviewConsent(false);setApproval(false)},[name,source]);
  const current=proposal!==null&&isCurrent(proposal,name,source);
  const diff=useMemo(()=>proposal?diffLines(proposal.base,proposal.source):[],[proposal]);
- function reset(){setProposal(null);setReview('');setApproval(false);setReviewConsent(false);setError('')}
+ function reset(){if(proposal)onFlow({type:'discard',name:proposal.name,base:proposal.base,candidate:proposal.source});setProposal(null);setReview('');setApproval(false);setReviewConsent(false);setError('')}
  async function requestProposal(){
   if(disabled||!consent||controller.current)return;
   reset();setConsent(false);
