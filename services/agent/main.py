@@ -34,7 +34,7 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
             if not access_verifier.enabled:
                 raise RuntimeError('Cloudflare Access verification must be configured for cloud mode')
             model=CloudflarePlanner(os.getenv('STAR_CLOUDFLARE_MODEL_URL',
-                'https://kali-osint-star.pages.dev/api/ai/chat'))
+                'https://kali-osint-star.pages.dev/api/agent/inference'))
         elif backend=='cpu':
             cpu_key=os.getenv('STAR_CPU_API_KEY','')
             if len(cpu_key)<32:raise RuntimeError('STAR_CPU_API_KEY is required in CPU model mode')
