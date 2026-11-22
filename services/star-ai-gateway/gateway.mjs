@@ -28,7 +28,22 @@ const RULES = [
 function json(value,status=200) {
   return new Response(JSON.stringify(value),{status,headers:JSON_HEADERS});
 }
-function fail(status,code) {return json({error:{code,message:code.replace(/_/g,' ')}},status);}
+const ERROR_HINTS={
+ unauthorized:'Gateway authentication required. Check the API key and Authorization header.',
+ model_not_configured:'Model ID is not configured. Fetch the authenticated /v1/models list.',
+ invalid_messages:'Send 1-24 nonempty text messages, each at most 5000 characters, ending with a user message.',
+ conversation_too_long:'Conversation exceeds 24000 characters. Start a fresh chat with a short prompt.',
+ unsupported_chat_features:'This gateway supports text chat only; disable client tools, agent execution and non-text message roles.',
+ invalid_max_tokens:'Use max_tokens or max_completion_tokens between 64 and 4096; do not send conflicting values.',
+ body_too_large:'Request exceeds the 70000-byte limit. Start a fresh text chat.',
+ provider_unreachable:'Upstream connection failed or exceeded the 65-second timeout.',
+ invalid_provider_reply:'Provider returned no usable final answer.',
+ provider_reasoning_only:'The model exhausted its generation budget without a final answer. Try a short prompt with a bounded larger output budget.',
+ invalid_provider_stream:'Provider did not return a valid event stream. Test non-streaming chat.',
+ rate_limited:'Request rate limit reached. Retry later.',
+ too_many_concurrent_requests:'Two requests are already running. Wait before retrying.'
+};
+function fail(status,code) {return json({error:{code,type:status===401?'authentication_error':status===429?'rate_limit_error':status>=500?'server_error':'invalid_request_error',message:ERROR_HINTS[code]||code.replace(/_/g,' '),param:null}},status);}
 function hash(value) {return createHash('sha256').update(value).digest();}
 function authorized(request,token) {
   if(typeof token!=='string'||token.length<32)return false;
@@ -114,6 +129,10 @@ function chatRequest(data,models,allowReview=false) {
   if(!data||typeof data!=='object'||typeof data.model!=='string')return null;
   const model=models.find(x=>x.id===data.model&&x.key);
   if(!model)return {error:fail(503,'model_not_configured')};
+  if(data.tools?.length||data.functions?.length||
+     (data.tool_choice!==undefined&&data.tool_choice!=='none')||
+     (Array.isArray(data.messages)&&data.messages.some(m=>m&&(['system','developer','tool','function'].includes(m.role)||m.tool_calls||m.function_call))))
+    return {error:fail(422,'unsupported_chat_features')};
   const mode=allowReview?'security':data.mode??'security';
   if(!Object.hasOwn(MODES,mode))return {error:fail(422,'invalid_mode')};
   if(!Array.isArray(data.messages)||data.messages.length<1||data.messages.length>24)return {error:fail(422,'invalid_messages')};
@@ -125,16 +144,19 @@ function chatRequest(data,models,allowReview=false) {
     size+=m.content.length;
     messages.push({role:m.role,content:m.content});
   }
-  if(size>24000||messages.at(-1).role!=='user')return {error:fail(422,'invalid_messages')};
+  if(size>24000)return {error:fail(422,'conversation_too_long')};
+  if(messages.at(-1).role!=='user')return {error:fail(422,'invalid_messages')};
   if(data.stream!==undefined&&typeof data.stream!=='boolean')return {error:fail(422,'invalid_stream')};
   if(data.temperature!==undefined&&(typeof data.temperature!=='number'||data.temperature<0||data.temperature>1))return {error:fail(422,'invalid_temperature')};
-  if(data.max_tokens!==undefined&&(!Number.isInteger(data.max_tokens)||data.max_tokens<64||data.max_tokens>4096))return {error:fail(422,'invalid_max_tokens')};
+  if(data.max_tokens!==undefined&&data.max_completion_tokens!==undefined&&data.max_tokens!==data.max_completion_tokens)return {error:fail(422,'invalid_max_tokens')};
+  const maxTokens=data.max_completion_tokens??data.max_tokens??1200;
+  if((data.max_tokens!==undefined&&data.max_tokens===null)||(data.max_completion_tokens!==undefined&&data.max_completion_tokens===null)||!Number.isInteger(maxTokens)||maxTokens<64||maxTokens>4096)return {error:fail(422,'invalid_max_tokens')};
   return {model,body:{
     model:model.upstreamModel,
     messages:[{role:'system',content:MODES[mode]},...messages],
     stream:data.stream===true,
     temperature:data.temperature??0.35,
-    max_tokens:data.max_tokens??1200
+    max_tokens:maxTokens
   }};
 }
 async function invokeProvider(model,body,fetchImpl) {
@@ -161,10 +183,13 @@ async function invokeProvider(model,body,fetchImpl) {
   try {
     const response=await upstream.json();
     const content=response?.choices?.[0]?.message?.content;
-    if(typeof content!=='string'||!content.trim())return fail(502,'invalid_provider_reply');
+    if(typeof content!=='string'||!content.trim()){
+      const choice=response?.choices?.[0];
+      return fail(502,choice?.finish_reason==='length'&&typeof choice?.message?.reasoning==='string'?'provider_reasoning_only':'invalid_provider_reply');
+    }
     return json({id:typeof response.id==='string'?response.id:'star-ai-result',
-      object:'chat.completion',model:model.id,
-      choices:[{index:0,message:{role:'assistant',content},finish_reason:'stop'}],
+      object:'chat.completion',created:Number.isSafeInteger(response.created)&&response.created>=0?response.created:Math.floor(Date.now()/1000),model:model.id,
+      choices:[{index:0,message:{role:'assistant',content},finish_reason:response.choices[0].finish_reason==='length'?'length':'stop'}],
       usage:response.usage||null});
   }catch{return fail(502,'invalid_provider_reply');}
 }
@@ -181,6 +206,7 @@ export function createGateway({env=process.env,fetchImpl=globalThis.fetch,now=()
     const bearer=/^Bearer ([^\s]+)$/i.exec(request.headers.get('authorization')||'')?.[1]||'';
     if(!authorized(request,env.STAR_GATEWAY_TOKEN)&&!(await verifyAccessToken(bearer)))
       return fail(401,'unauthorized');
+    if((pathname==='/v1'||pathname==='/v1/')&&request.method==='GET')return json({service:'star-ai-cyber-gateway',object:'api',models:'/v1/models',chat:'/v1/chat/completions',text_only:true});
     if(pathname==='/v1/models'&&request.method==='GET')
       return json({object:'list',data:models.filter(x=>x.key).map(x=>({id:x.id,object:'model',owned_by:'star-ai'}))});
     if(pathname==='/v1/security/capabilities'&&request.method==='GET')return json({deep_audit:true,sarif:true,limits:deepAuditLimits});
