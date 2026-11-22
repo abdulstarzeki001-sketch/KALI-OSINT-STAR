@@ -6,13 +6,13 @@ import ProjectWorkspacePanel from './ProjectWorkspacePanel';
 import RepositoryIntelligencePanel from './RepositoryIntelligencePanel';
 import EngineeringMemoryPanel,{loadEngineeringMemory} from './EngineeringMemoryPanel';
 import {appendRun,STORAGE_KEY} from './engineering-memory';
-import type {Memory,ModelId} from './engineering-memory';
+import type {Memory,ModelId,Run} from './engineering-memory';
 import {QUALITY_FIXTURE,QUALITY_QUESTION,QUALITY_MODELS,parseReview,parseQualityReport} from './quality-report';
 import type {QualityModel} from './quality-report';
 import {benchmarkPrompt,BENCHMARK_INSTRUCTION,gradeBenchmark} from './verified-benchmark';
 
 type Result = {requested:QualityModel;model:string;analysis:string;elapsed:number;grade?:ReturnType<typeof gradeBenchmark>};
-export default function StarQualityPanel({section}:{section:ControlSection}){
+export default function StarQualityPanel({section,onRuns}:{section:ControlSection;onRuns:(runs:Run[])=>void}){
  const lock=useRef(false);
  const [engineeringEvidence,setEngineeringEvidence]=useState<ReturnType<typeof parseEvidence>|null>(null);
  const [memory,setMemory]=useState(loadEngineeringMemory);
@@ -20,7 +20,7 @@ export default function StarQualityPanel({section}:{section:ControlSection}){
  const [remember,setRemember]=useState(false);
  const [storageError,setStorageError]=useState(false);
  function updateMemory(next:Memory){
-  memoryRef.current=next;setMemory(next);
+  memoryRef.current=next;setMemory(next);onRuns(next.runs);
   try{localStorage.setItem(STORAGE_KEY,JSON.stringify(next));setStorageError(false)}catch{setStorageError(true)}
  }
  const [busy,setBusy]=useState(false);
