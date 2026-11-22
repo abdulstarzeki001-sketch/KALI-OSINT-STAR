@@ -2,6 +2,8 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {checkShare,isCurrent,parseAdvisory,parseProposal,proposalMessages,reviewMessages,TASKS} from './coding-copilot';
 import type {Proposal,Task} from './coding-copilot';
 import {diffLines} from './project-workspace';
+import {runEngineeringCycle} from './engineering-agent';
+import type {AgentPhase} from './engineering-agent';
 import type {FlowEvent} from './engineering-orchestrator';
 
 const labels:Record<Task,string>={documentation:'تحسين التوثيق',readability:'تحسين قابلية القراءة',validation:'مراجعة التحقق من المدخلات',tests:'تحسين اختبارات الوحدة الموجودة'};
@@ -16,6 +18,10 @@ async function ask(model:string,messages:{role:string;content:string}[],signal:A
 export default function CodingCopilotPanel({name,source,onApply,onFlow,disabled}:{name:string;source:string;onApply:(p:Proposal)=>void;onFlow:(e:FlowEvent)=>void;disabled:boolean}){
  const [task,setTask]=useState<Task>('readability');
  const [consent,setConsent]=useState(false);
+ const [cycleConsent,setCycleConsent]=useState(false);
+ const [phase,setPhase]=useState<AgentPhase|null>(null);
+ const latest=useRef({name,source});
+ latest.current={name,source};
  const [reviewConsent,setReviewConsent]=useState(false);
  const [approval,setApproval]=useState(false);
  const [proposal,setProposal]=useState<Proposal|null>(null);
@@ -24,10 +30,10 @@ export default function CodingCopilotPanel({name,source,onApply,onFlow,disabled}
  const [error,setError]=useState('');
  const controller=useRef<AbortController|null>(null);
  useEffect(()=>()=>controller.current?.abort(),[]);
- useEffect(()=>{setConsent(false);setReviewConsent(false);setApproval(false)},[name,source]);
+ useEffect(()=>{setConsent(false);setCycleConsent(false);setReviewConsent(false);setApproval(false);controller.current?.abort()},[name,source]);
  const current=proposal!==null&&isCurrent(proposal,name,source);
  const diff=useMemo(()=>proposal?diffLines(proposal.base,proposal.source):[],[proposal]);
- function reset(){if(proposal)onFlow({type:'discard',name:proposal.name,base:proposal.base,candidate:proposal.source});setProposal(null);setReview('');setApproval(false);setReviewConsent(false);setError('')}
+ function reset(){setPhase(null);setCycleConsent(false);if(proposal)onFlow({type:'discard',name:proposal.name,base:proposal.base,candidate:proposal.source});setProposal(null);setReview('');setApproval(false);setReviewConsent(false);setError('')}
  async function requestProposal(){
   if(disabled||!consent||controller.current)return;
   reset();setConsent(false);
@@ -40,6 +46,21 @@ export default function CodingCopilotPanel({name,source,onApply,onFlow,disabled}
    const next=parseProposal(data,name,source);
    setProposal(next);onFlow({type:'proposal',name:next.name,base:next.base,candidate:next.source});
   }catch(e){if(!abort.signal.aborted)setError(e instanceof Error?e.message:'تعذر إنشاء المقترح');else setError('تم إلغاء الطلب أو انتهت مهلته')}
+  finally{window.clearTimeout(timer);controller.current=null;setBusy(false)}
+ }
+ async function requestCycle(){
+  if(disabled||!consent||!cycleConsent||controller.current)return;
+  reset();setConsent(false);setCycleConsent(false);
+  const abort=new AbortController();controller.current=abort;setBusy(true);
+  const timer=window.setTimeout(()=>abort.abort(),180000);
+  try{
+   await runEngineeringCycle({name,source,task,consentQwen:consent,consentLlama:cycleConsent,signal:abort.signal,
+    isCurrent:()=>latest.current.name===name&&latest.current.source===source,
+    ask,onPhase:setPhase,
+    onProposal:p=>{setProposal(p);onFlow({type:'proposal',name:p.name,base:p.base,candidate:p.source})},
+    onReview:(p,text)=>{setReview(text);onFlow({type:'review',name:p.name,base:p.base,candidate:p.source})}
+   });
+  }catch(e){setError(abort.signal.aborted?'أُلغيت الدورة أو انتهت مهلتها؛ لم تُطبّق تغييرات.':e instanceof Error?e.message:'تعذر إكمال الدورة')}
   finally{window.clearTimeout(timer);controller.current=null;setBusy(false)}
  }
  async function requestReview(){
@@ -57,6 +78,9 @@ export default function CodingCopilotPanel({name,source,onApply,onFlow,disabled}
   <label>نوع المساعدة<select disabled={busy||disabled} value={task} onChange={e=>{setTask(e.target.value as Task);setConsent(false);reset()}}>{Object.keys(TASKS).map(k=><option key={k} value={k}>{labels[k as Task]}</option>)}</select></label>
   <label><input type="checkbox" checked={consent} disabled={busy||disabled} onChange={e=>setConsent(e.target.checked)}/> أوافق على إرسال محتوى الملف الحالي إلى Qwen</label>
   <button type="button" disabled={busy||disabled||!consent||source.length>4000||!source.trim()} onClick={()=>void requestProposal()}>إنشاء مقترح تعديل</button>
+  <label><input type="checkbox" checked={cycleConsent} disabled={busy||disabled} onChange={e=>setCycleConsent(e.target.checked)}/> أوافق أيضاً على إرسال الأصل ومقترح Qwen إلى Llama للمراجعة ضمن دورة واحدة</label>
+  <button type="button" disabled={busy||disabled||!consent||!cycleConsent||source.length>4000||!source.trim()} onClick={()=>void requestCycle()}>بدء دورة المبرمج والمراجع</button>
+  {phase&&<p role="status">{phase==='proposing'?'Qwen: إنشاء المقترح':phase==='reviewing'?'Llama: مراجعة المقترح':phase==='ready'?'اكتملت الاستجابتان؛ يلزم اعتماد التعديل':'توقفت الدورة؛ لم تُطبّق تغييرات'}</p>}
   {busy&&<button type="button" onClick={()=>controller.current?.abort()}>إلغاء الطلب</button>}
   {error&&<p className="ai-error" role="alert">{error}</p>}
   {proposal&&<>
