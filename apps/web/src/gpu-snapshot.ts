@@ -1,4 +1,4 @@
-import {parseInstalledModels} from './model-manager';
+import {parseInstalledModels} from './model-manager.ts';
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const num=(v:unknown,max=Number.MAX_SAFE_INTEGER):v is number=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=max;
 function nullable(v:unknown,max=Number.MAX_SAFE_INTEGER):number|null{
