@@ -2,12 +2,14 @@ import {useEffect,useRef,useState} from 'react';
 import GpuSnapshotPanel from './GpuSnapshotPanel';
 import {appendSample,parseUsage,remainingCooldown,summarizePerformance} from './performance-engine';
 import type {Sample} from './performance-engine';
+import type {Probe} from './smart-router';
+import type {AIModel} from './ai-models';
 import {parseConnection} from './control-center';
 import type {ConnectionResult} from './control-center';
 const MODELS=['qwen3-coder-vast','llama-cloudflare'] as const;
 const labels={'qwen3-coder-vast':'Qwen3-Coder 30B','llama-cloudflare':'Llama 3.3 70B'};
 const initial=():Record<typeof MODELS[number],ConnectionResult>=>({'qwen3-coder-vast':{state:'idle'},'llama-cloudflare':{state:'idle'}});
-export default function ControlHealthPanel(){
+export default function ControlHealthPanel({onProbe}:{onProbe:(model:AIModel,probe:Probe)=>void}){
  const [results,setResults]=useState(initial);
  const [busy,setBusy]=useState(false);
  const lock=useRef(false);
@@ -34,7 +36,7 @@ export default function ControlHealthPanel(){
      status='responded';usage=parseUsage(data.usage);
      setResults(old=>({...old,[model]:result}));
     }catch(e){if(controller.signal.aborted)status='timeout';setResults(old=>({...old,[model]:{state:'failed',detail:e instanceof Error?e.message:'تعذر التحقق'}}))}
-    finally{window.clearTimeout(timer);const elapsedMs=performance.now()-start;setHistory(old=>appendSample(old,{model,status,usage,elapsedMs:Math.min(elapsedMs,300000)}))}
+    finally{window.clearTimeout(timer);const elapsedMs=performance.now()-start;setHistory(old=>appendSample(old,{model,status,usage,elapsedMs:Math.min(elapsedMs,300000)}));onProbe(model,{state:status==='responded'?'responded':'failed',at:Date.now(),elapsedMs:status==='responded'?Math.round(elapsedMs):null})}
    }
    setCheckedAt(new Date().toISOString());
   }finally{lock.current=false;setBusy(false)}
