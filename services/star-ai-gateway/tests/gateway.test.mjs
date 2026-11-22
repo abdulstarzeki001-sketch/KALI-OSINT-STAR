@@ -109,3 +109,51 @@ test('per-instance rate limit blocks the 21st authenticated request',async()=>{
   for(let i=0;i<20;i++)assert.equal((await handler(request('/v1/security/audit',{artifact:'eval(x)'}))).status,200);
   assert.equal((await handler(request('/v1/security/audit',{artifact:'eval(x)'}))).status,429);
 });
+
+test('authenticated API root is discoverable without exposing credentials',async()=>{
+ const {handler,calls}=fixture();
+ const denied=await handler(request('/v1',undefined,'wrong','GET'));
+ assert.equal(denied.status,401);
+ assert.equal((await denied.json()).error.type,'authentication_error');
+ const allowed=await handler(request('/v1',undefined,TOKEN,'GET'));
+ assert.equal(allowed.status,200);
+ assert.equal((await allowed.json()).text_only,true);
+ assert.equal(calls.length,0);
+});
+test('supports bounded max_completion_tokens and rejects conflicts',async()=>{
+ const {handler,calls}=fixture();
+ const base={model:'qwen-coder',messages:[{role:'user',content:'Explain unit tests'}]};
+ const response=await handler(request('/v1/chat/completions',{...base,max_completion_tokens:512}));
+ assert.equal(response.status,200);
+ assert.equal(JSON.parse(calls[0].options.body).max_tokens,512);
+ assert.ok(Number.isInteger((await response.json()).created));
+ assert.equal((await handler(request('/v1/chat/completions',{...base,max_completion_tokens:512,max_tokens:1024}))).status,422);
+ assert.equal((await handler(request('/v1/chat/completions',{...base,max_completion_tokens:5000}))).status,422);
+ assert.equal(calls.length,1);
+});
+test('gives actionable errors for excess history and unsupported agent features',async()=>{
+ const {handler,calls}=fixture();
+ const messages=Array.from({length:6},()=>({role:'user',content:'a'.repeat(4500)}));
+ const long=await handler(request('/v1/chat/completions',{model:'qwen-coder',messages}));
+ assert.equal(long.status,422);
+ assert.equal((await long.json()).error.code,'conversation_too_long');
+ const tools=await handler(request('/v1/chat/completions',{model:'qwen-coder',messages:[{role:'user',content:'hello'}],tools:[{type:'function'}]}));
+ assert.equal(tools.status,422);
+ assert.equal((await tools.json()).error.code,'unsupported_chat_features');
+ const malformed=await handler(request('/v1/chat/completions',{model:'qwen-coder',messages:{some:'bad'}}));
+ assert.equal(malformed.status,422);
+ assert.equal(calls.length,0);
+});
+test('does not turn internal reasoning into an answer, preserves length stop',async()=>{
+ let answer={choices:[{message:{content:'',reasoning:'private reasoning'},finish_reason:'length'}]};
+ const handler=createGateway({env:ENV,fetchImpl:async()=>new Response(JSON.stringify(answer),{headers:{'content-type':'application/json'}})});
+ const payload={model:'qwen-coder',messages:[{role:'user',content:'hello'}]};
+ const empty=await handler(request('/v1/chat/completions',payload));
+ assert.equal(empty.status,502);
+ const error=await empty.json();
+ assert.equal(error.error.code,'provider_reasoning_only');
+ assert.equal(JSON.stringify(error).includes('private reasoning'),false);
+ answer={choices:[{message:{content:'partial answer'},finish_reason:'length'}]};
+ const response=await handler(request('/v1/chat/completions',payload));
+ assert.equal((await response.json()).choices[0].finish_reason,'length');
+});
