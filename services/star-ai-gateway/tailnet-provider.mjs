@@ -19,6 +19,11 @@ export function tailnetProvider(env, fetchImpl = globalThis.fetch) {
         upstreamModel: 'qwen3-coder:30b',
         baseUrl,
         keyEnv: 'STAR_PROVIDER_TAILNET_OLLAMA_KEY'
+      }, {
+        id: 'star-pro-vast',
+        upstreamModel: 'star-pro:latest',
+        baseUrl,
+        keyEnv: 'STAR_PROVIDER_TAILNET_OLLAMA_KEY'
       }]),
       // Ollama ignores OpenAI API keys. Tailscale policy authorizes this connection.
       STAR_PROVIDER_TAILNET_OLLAMA_KEY: 'ollama'
