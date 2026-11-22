@@ -17,7 +17,7 @@ Use a Cloudflare Access-protected server-side Pages Function or private gateway 
 
 Keep Ollama bound to localhost on the GPU server and publish it with Tailscale Serve. Grant the gateway's dedicated Tailscale tag access to that GPU node on TCP 443. In the existing Railway gateway service, set `STAR_TAILNET_OLLAMA_URL` to the GPU node's `https://<node>.<tailnet>.ts.net/v1` URL, and seal `TS_AUTHKEY` with a short-lived, reusable, ephemeral auth key for that tag. Both variables are required to enable the route. The gateway re-enrolls after a restart, so renew the auth key before it expires.
 
-The gateway adds `qwen3-coder-vast` for the installed `qwen3-coder:30b` model. The Tailscale proxy listens on container loopback and is used only for this provider's completion URL. The existing model catalog and Cloudflare Access authentication still apply. Confirm inference with an authenticated request to `/v1/chat/completions` or an AI review in the web app.
+The gateway adds `qwen3-coder-vast` for the installed `qwen3-coder:30b` model. The Tailscale proxy listens on container loopback and is used only for this provider's completion URL. The existing model catalog and Cloudflare Access authentication still apply. The private catalog also offers `star-pro-vast` for an already installed `star-pro:latest` defensive engineering model. No model is pulled or executed by catalog configuration. Keep the current frontend default until authenticated inference against the new alias succeeds. Confirm inference with an authenticated request to `/v1/chat/completions` or an AI review in the web app.
 
 ## Endpoints
 
