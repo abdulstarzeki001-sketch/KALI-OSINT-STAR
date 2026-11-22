@@ -1,4 +1,8 @@
-import {useState} from 'react';
+import {useRef,useState} from 'react';
+import SmartRouterPanel from './SmartRouterPanel';
+import {loadEngineeringMemory} from './EngineeringMemoryPanel';
+import type {Run} from './engineering-memory';
+import type {Probes} from './smart-router';
 import SafeMarkdown from './SafeMarkdown';
 import StarQualityPanel from './StarQualityPanel';
 import ControlHealthPanel from './ControlHealthPanel';
@@ -13,6 +17,9 @@ type Answer = {status?:string;model?:string;analysis?:string;notice?:string;erro
 const MAX_REPORT = 18000;
 const SAFE_TEST_REPORT = 'SYNTHETIC TEST ONLY. Authorized offline virtual lab: host 192.168.56.10 has SSH TCP/22 reachable; TCP/8080 unreachable; SSH patch status unknown. No exploitation performed and no credentials processed. Please suggest defensive validation and remediation.';
 export default function StarAIPanel() {
+  const [probes,setProbes]=useState<Probes>({});
+  const [runs,setRuns]=useState<Run[]>(()=>loadEngineeringMemory().runs);
+  const requestLock=useRef(false);
   const [section,setSection]=useState<ControlSection>('health');
   const [toolCommand,setToolCommand]=useState('');
   const [toolWorking,setToolWorking]=useState(false);
@@ -101,16 +108,20 @@ export default function StarAIPanel() {
   }
 
   async function analyze(){
+    if(requestLock.current)return;
     if(report.trim().length<30||report.length>MAX_REPORT){setError('أدخل تقريراً من 30 إلى 18,000 حرف.');return;}
+    requestLock.current=true;
     setLoading(true);setError('');setAnalysis('');setCopyFeedback('');setResultView('formatted');
     try {
       const result=await submitReport(report.trim(),question.trim());
       setAnalysis(result.analysis||'');setModel(result.model||'Workers AI');
     } catch(e){setError(e instanceof Error?e.message:'تعذر تحليل التقرير');}
-    finally{setLoading(false);}
+    finally{setLoading(false);requestLock.current=false;}
   }
 
   async function testAuthenticatedSession(){
+    if(requestLock.current)return;
+    requestLock.current=true;
     setTestState('running');setTestFeedback('');setError('');setCopyFeedback('');setResultView('formatted');
     const started=performance.now();
     try{
@@ -122,7 +133,7 @@ export default function StarAIPanel() {
     }catch(e){
       setTestState('failed');
       setTestFeedback('لم يكتمل اختبار الجلسة: '+(e instanceof Error?e.message:'خطأ غير معروف'));
-    }
+    }finally{requestLock.current=false;}
   }
   async function copyReport(){
     if(!analysis)return;
@@ -137,7 +148,7 @@ export default function StarAIPanel() {
   return <section className="star-ai page-animate" dir="rtl">
     <header className="ai-heading"><div><h1>STAR AI <span>Security Analyst</span></h1><p>حلّل تقارير مختبراتك، سجلات الدفاع، ومخرجات الأدوات.</p></div></header>
     <nav className="ai-control-nav" aria-label="أقسام مركز التحكم">{CONTROL_SECTIONS.map(id=><button key={id} type="button" aria-pressed={section===id} onClick={()=>setSection(id)}>{CONTROL_LABELS[id]}</button>)}</nav>
-    <div hidden={section!=='health'}><ControlHealthPanel/></div>
+    <div hidden={section!=='health'}><ControlHealthPanel onProbe={(id,probe)=>setProbes(old=>({...old,[id]:probe}))}/></div>
     <div hidden={section!=='debugger'}><IntelligentDebuggerPanel onReport={value=>{if(loading||testState==='running')return;setReport(value);setFilename('star-debugger-report.json');setQuestion('راجع تصنيفات أخطاء البناء المرفقة واقترح خطوات تحقق وإصلاح دفاعية دون ادعاء تنفيذ الاختبارات.');setError('');setAnalysis('');setSection('analysis');}}/></div>
     <div hidden={section!=='analysis'} className="ai-control-group"><div className="ai-notice">النص يُعالَج على الخادم الذي تختاره أدناه. أزل كلمات المرور ورموز API والبيانات الحساسة قبل الإرسال.</div>
     <label className="ai-model-picker">
@@ -146,6 +157,7 @@ export default function StarAIPanel() {
         {AI_MODELS.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}
       </select>
     </label>
+    <SmartRouterPanel runs={runs} probes={probes} current={reportModel} onChoose={setReportModel} disabled={loading||testState==='running'}/>
     </div>
     <div hidden={section!=='tools'}><form className="ai-tool-command" onSubmit={e=>{e.preventDefault();void executeToolPrompt();}}>
       <div><strong>STAR AI → Railway Tool Executor</strong><small>مثال: «افحص Frida» أو «اعرض إصدار NetExec». ينفذ فحصاً محلياً ثابتاً فقط، ولا يرسل أوامر Shell أو يبدأ C2 تلقائياً.</small></div>
@@ -164,7 +176,7 @@ export default function StarAIPanel() {
     </div>
     {testState!=='idle'&&testState!=='running'&&<p className={'ai-test-result '+(testState==='passed'?'ok':'failed')} role={testState==='failed'?'alert':'status'}>{testFeedback}</p>}
     <div className="ai-grid">
-      <div className="ai-panel"><h2>01 — التقرير</h2><label htmlFor="star-ai-report">محتوى التقرير أو سجل التدريب</label><textarea id="star-ai-report" dir="auto" rows={13} value={report} maxLength={MAX_REPORT} onChange={e=>setReport(e.target.value)} placeholder="ألصق هنا تقرير المختبر أو مخرجات منقحة من بيانات حساسة..."/><div className="ai-toolbar"><label className="ai-upload">تحميل ملف TXT / JSON / MD / LOG<input type="file" accept=".txt,.json,.md,.log,text/plain,application/json" onChange={e=>void readFile(e.target.files?.[0])}/></label><span>{filename?filename+' · ':''}{report.length} / {MAX_REPORT}</span></div><label htmlFor="star-ai-question">سؤال تحليلي إضافي (اختياري)</label><input id="star-ai-question" type="text" maxLength={500} value={question} onChange={e=>setQuestion(e.target.value)} placeholder="مثلاً: رتّب المخاطر حسب الأولوية وكيفية المعالجة"/><button className="ai-submit" onClick={()=>void analyze()} disabled={loading||report.trim().length<30}>{loading?'جارٍ التحليل...':'تحليل التقرير بواسطة STAR AI'}</button></div>
+      <div className="ai-panel"><h2>01 — التقرير</h2><label htmlFor="star-ai-report">محتوى التقرير أو سجل التدريب</label><textarea id="star-ai-report" dir="auto" rows={13} value={report} maxLength={MAX_REPORT} onChange={e=>setReport(e.target.value)} placeholder="ألصق هنا تقرير المختبر أو مخرجات منقحة من بيانات حساسة..."/><div className="ai-toolbar"><label className="ai-upload">تحميل ملف TXT / JSON / MD / LOG<input type="file" accept=".txt,.json,.md,.log,text/plain,application/json" onChange={e=>void readFile(e.target.files?.[0])}/></label><span>{filename?filename+' · ':''}{report.length} / {MAX_REPORT}</span></div><label htmlFor="star-ai-question">سؤال تحليلي إضافي (اختياري)</label><input id="star-ai-question" type="text" maxLength={500} value={question} onChange={e=>setQuestion(e.target.value)} placeholder="مثلاً: رتّب المخاطر حسب الأولوية وكيفية المعالجة"/><button className="ai-submit" onClick={()=>void analyze()} disabled={loading||testState==='running'||report.trim().length<30}>{loading?'جارٍ التحليل...':'تحليل التقرير بواسطة STAR AI'}</button></div>
       <div className="ai-panel ai-output-panel">
         <div className="ai-result-head"><div><h2>02 — النتائج والتحسينات الدفاعية</h2><p className="ai-result-subtitle">تقرير قابل للقراءة، مع دعم العربية والأكواد والجداول</p></div></div>
         {analysis&&<div className="ai-actions" aria-label="خيارات عرض التقرير">
@@ -186,6 +198,6 @@ export default function StarAIPanel() {
         </>:<div className="ai-empty">النتائج تظهر هنا بعد إرسال تقرير حقيقي. لن نولّد نتائج افتراضية أو ندّعي أن أدوات Kali فحصت جهازك.</div>}
       </div>
     </div></div>
-    <div hidden={!(['quality','workspace','tests','dependencies','memory'] as ControlSection[]).includes(section)}><StarQualityPanel section={section}/></div>
+    <div hidden={!(['quality','workspace','tests','dependencies','memory'] as ControlSection[]).includes(section)}><StarQualityPanel section={section} onRuns={setRuns}/></div>
   </section>;
 }
