@@ -1,3 +1,4 @@
+import {parseInstalledModels} from './model-manager.ts';
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const num=(v:unknown,max=Number.MAX_SAFE_INTEGER):v is number=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=max;
 function nullable(v:unknown,max=Number.MAX_SAFE_INTEGER):number|null{
@@ -31,5 +32,5 @@ export function parseGpuSnapshot(raw:string){
   return {name:safeName(m.name,160),sizeBytes:nullable(m.sizeBytes??null),vramBytes:nullable(m.vramBytes??null)};
  });
  if(v.loadAverage!==null&&(!Array.isArray(v.loadAverage)||v.loadAverage.length!==3||!v.loadAverage.every(n=>num(n,100000))))throw Error('Invalid load average');
- return {capturedAt:v.capturedAt,gpus,models,ram:pair(v.ram,'totalBytes','availableBytes'),storage:pair(v.storage,'totalBytes','freeBytes'),cpuCount:nullable(v.cpuCount,65536),loadAverage:v.loadAverage as number[]|null};
+ return {capturedAt:v.capturedAt,gpus,models,installedModels:parseInstalledModels(v.installedModels),ram:pair(v.ram,'totalBytes','availableBytes'),storage:pair(v.storage,'totalBytes','freeBytes'),cpuCount:nullable(v.cpuCount,65536),loadAverage:v.loadAverage as number[]|null};
 }

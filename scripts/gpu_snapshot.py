@@ -54,6 +54,36 @@ def loaded_models():
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
 
+def installed_models():
+    """Read local Ollama inventory only; never pull, load or delete a model."""
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        with opener.open("http://127.0.0.1:11434/api/tags", timeout=5) as r:
+            raw = r.read(524289)
+        if len(raw) > 524288:
+            return None
+        models = json.loads(raw)["models"]
+        if not isinstance(models, list) or len(models) > 100:
+            return None
+        result = []
+        for m in models:
+            name = m.get("name")
+            if not isinstance(name, str) or not name.strip() or len(name) > 160 or any(ord(c)<32 or ord(c)==127 for c in name):
+                return None
+            size = m.get("size")
+            if type(size) is not int or not 0 <= size <= 9007199254740991:
+                size = None
+            details = m.get("details")
+            if not isinstance(details, dict):
+                details = {}
+            def label(key):
+                v = details.get(key)
+                return v if isinstance(v,str) and len(v)<=80 and all(32<=ord(c)<127 for c in v) else None
+            result.append({"name":name,"sizeBytes":size,"parameterSize":label("parameter_size"),"quantization":label("quantization_level")})
+        return result
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
 def snapshot():
     try:
         disk = shutil.disk_usage(".")
@@ -64,7 +94,7 @@ def snapshot():
         load = list(os.getloadavg())
     except OSError:
         load=None
-    return {"schema":1,"capturedAt":datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),"source":"local-host-snapshot","gpus":gpu_snapshot(),"ram":ram_snapshot(),"cpuCount":os.cpu_count(),"loadAverage":load,"storage":storage,"models":loaded_models(),"tokensPerSecond":None,"actualCost":None}
+    return {"schema":1,"capturedAt":datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),"source":"local-host-snapshot","gpus":gpu_snapshot(),"ram":ram_snapshot(),"cpuCount":os.cpu_count(),"loadAverage":load,"storage":storage,"models":loaded_models(),"installedModels":installed_models(),"tokensPerSecond":None,"actualCost":None}
 
 if __name__=="__main__":
     print(json.dumps(snapshot(),indent=2))

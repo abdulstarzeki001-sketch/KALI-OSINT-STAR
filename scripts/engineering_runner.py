@@ -9,14 +9,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITES = (
-    ("python-quality", [sys.executable, "-m", "unittest", "-v", "scripts.test_star_ai_quality", "scripts.test_engineering_runner", "scripts.test_gpu_snapshot"]),
+    ("python-quality", [sys.executable, "-m", "unittest", "-v", "scripts.test_star_ai_quality", "scripts.test_engineering_runner", "scripts.test_gpu_snapshot", "scripts.test_model_inventory"]),
     ("opencode-config", [sys.executable, "-m", "json.tool", "opencode.json"]),
     ("web-quality", ["node", "--experimental-strip-types", "--test",
         "apps/web/tests/quality-report.test.mjs", "apps/web/tests/verified-benchmark.test.mjs",
         "apps/web/tests/engineering-memory.test.mjs", "apps/web/tests/repository-intelligence.test.mjs",
         "apps/web/tests/project-workspace.test.mjs", "apps/web/tests/coding-copilot.test.mjs",
         "apps/web/tests/engineering-evidence.test.mjs", "apps/web/tests/engineering-orchestrator.test.mjs",
-        "apps/web/tests/intelligent-debugger.test.mjs", "apps/web/tests/control-center.test.mjs", "apps/web/tests/performance-engine.test.mjs", "apps/web/tests/gpu-snapshot.test.mjs"]),
+        "apps/web/tests/intelligent-debugger.test.mjs", "apps/web/tests/control-center.test.mjs", "apps/web/tests/performance-engine.test.mjs", "apps/web/tests/gpu-snapshot.test.mjs", "apps/web/tests/model-manager.test.mjs"]),
 )
 def run_suite(suite_id, command):
     start = time.monotonic()

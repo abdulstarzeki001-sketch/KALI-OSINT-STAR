@@ -1,4 +1,5 @@
 import {useState} from 'react';
+import ModelManagerPanel from './ModelManagerPanel';
 import {parseGpuSnapshot} from './gpu-snapshot';
 const gib=(n:number|null)=>n===null?'—':(n/1073741824).toFixed(2)+' GiB';
 export default function GpuSnapshotPanel(){
@@ -24,6 +25,7 @@ export default function GpuSnapshotPanel(){
    <p>نماذج Ollama المحملة: {report.models===null?'غير متاح':report.models.length}</p>
    {report.models?.map((m,i)=><p key={i} dir="auto">{m.name} · VRAM {gib(m.vramBytes)}</p>)}
    <small>سرعة التوليد والتكلفة غير متاحتين في هذا التقرير. لا تُستنتجان من استخدام GPU.</small>
+   <ModelManagerPanel installed={report.installedModels} loaded={report.models}/>
    <button type="button" onClick={()=>setReport(null)}>إزالة التقرير</button>
   </>}
  </section>
