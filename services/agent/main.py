@@ -106,8 +106,18 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
             else:
                 app.state.model_probe={'state':'invalid_action'}
         except Exception as exc:
-            app.state.model_probe={'state':'failed','error_type':type(exc).__name__}
-        print('STAR_AGENT_MODEL_PROBE '+app.state.model_probe['state'],flush=True)
+            # Never log provider responses, credentials, or full exception strings.
+            msg=str(exc)
+            match=re.search(r'HTTP ([1-5][0-9]{2})',msg)
+            category=('http_'+match.group(1) if match else
+                      'auth_rejected' if 'authentication' in msg.lower() else
+                      'timeout' if isinstance(exc,asyncio.TimeoutError) else
+                      'invalid_response' if 'model returned' in msg.lower() else
+                      type(exc).__name__)
+            app.state.model_probe={'state':'failed','error_category':category}
+        state=app.state.model_probe
+        print('STAR_AGENT_MODEL_PROBE '+state['state']+
+              (' '+state.get('error_category','') if state['state']=='failed' else ''),flush=True)
 
     @app.on_event('startup')
     async def startup_model_probe():
