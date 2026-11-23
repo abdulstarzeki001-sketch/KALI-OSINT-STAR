@@ -112,7 +112,10 @@ export async function handleCyberPost({request,env},fetchUpstream=globalThis.fet
       if(!result.ok)return json({object:'list',data:[{id:'llama-cloudflare',object:'model',owned_by:'cloudflare'}]});
       const models=await result.json();
       const rows=Array.isArray(models.data)?models.data:[];
-      return json({object:'list',data:[...rows,{id:'llama-cloudflare',object:'model',owned_by:'cloudflare'}]});
+      // Relay only the bounded bootstrap enum. Never expose tailnet URLs or keys.
+      const allowed=new Set(['not_configured','missing_key','auth_failed','enrolled','unknown']);
+      const state=allowed.has(models.tailnet_status)?models.tailnet_status:'unknown';
+      return json({object:'list',data:[...rows,{id:'llama-cloudflare',object:'model',owned_by:'cloudflare'}],tailnet_status:state});
     }
     if(!result.ok&&data.action==='audit'&&result.status>=500)
       return json(auditLocally(data.artifact,data.kind));

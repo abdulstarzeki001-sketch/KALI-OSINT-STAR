@@ -99,7 +99,14 @@ export default function CyberAIPanel(){
       if(!alive)return;
       const ids=Array.isArray(data.data)?data.data.map(x=>typeof x?.id==='string'?x.id:'').filter(Boolean):[];
       setModels(ids);setModel(ids[0]||'');
-      setAvailability(ids.length?'تتوفر نماذج AI مهيأة للاستخدام':'لا توجد نماذج API مهيأة حالياً. التدقيق المحلي مستقل عن النموذج.');
+      // The model catalog proves configuration, not that an inference request succeeds.
+      const state=typeof data.tailnet_status==='string'?data.tailnet_status:'unknown';
+      const tailnetNote=state==='auth_failed'?
+        ' — Qwen/Ollama غير متصل: فشل تسجيل Tailscale على Railway. حدّث مفتاح TS_AUTHKEY من لوحة Tailscale ثم Railway.':
+        state==='missing_key'?' — Qwen/Ollama غير متصل: متغير TS_AUTHKEY مفقود من Railway.':
+        state==='enrolled'?' — اتصال Tailscale مهيأ؛ لم يتم اختبار استدلال Qwen بهذا الفحص.':'';
+      setAvailability((ids.length?'النماذج المُعلنة: '+ids.join('، '):
+        'لا توجد نماذج AI معلنة حالياً؛ التدقيق المحلي يعمل دون نموذج.')+tailnetNote);
     }).catch(err=>{if(alive)setAvailability('خدمة Gateway غير مهيأة أو لا يمكن الوصول إليها: '+String(err.message));});
     return ()=>{alive=false;};
   },[]);

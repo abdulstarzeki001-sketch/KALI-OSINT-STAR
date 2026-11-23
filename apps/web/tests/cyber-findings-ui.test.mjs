@@ -33,3 +33,12 @@ test('AI review timeouts leave deterministic local audit available and disclose 
  assert.match(source,/اختر llama-cloudflare يدوياً/);
  assert.doesNotMatch(source,/setModel\('llama-cloudflare'\)/);
 });
+
+
+test('Cyber AI distinguishes disconnected private Qwen from configured Cloudflare models',()=>{
+ assert.match(source,/state==='auth_failed'/);
+ assert.match(source,/فشل تسجيل Tailscale على Railway/);
+ assert.match(source,/TS_AUTHKEY/);
+ assert.match(source,/لم يتم اختبار استدلال Qwen بهذا الفحص/);
+ assert.doesNotMatch(source,/setModel\('qwen3-coder-vast'\)/);
+});
