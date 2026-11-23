@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import type {FormEvent,KeyboardEvent} from 'react';
 import SafeMarkdown from './SafeMarkdown';
-import {AI_MODELS,CLOUD_MODEL,PRIVATE_MODEL} from './ai-models';
+import {CHAT_MODELS,AUTO_MODEL,CLOUD_MODEL,PRIVATE_MODEL} from './ai-models';
 import type {AIModel} from './ai-models';
 import './agent-chat.css';
 
@@ -34,7 +34,7 @@ function readRooms():ChatRoom[]{
   const parsed=raw?JSON.parse(raw):[];
   if(!Array.isArray(parsed))return [newRoom()];
   const checked=parsed.filter(x=>x&&typeof x.id==='string'&&typeof x.title==='string'&&MODES.some(m=>m.id===x.mode)&&Array.isArray(x.messages))
-   .slice(0,16).map(x=>({...x,model:x.model===PRIVATE_MODEL?PRIVATE_MODEL:CLOUD_MODEL,
+   .slice(0,16).map(x=>({...x,model:x.model===AUTO_MODEL?AUTO_MODEL:x.model===PRIVATE_MODEL?PRIVATE_MODEL:CLOUD_MODEL,
     messages:x.messages.filter((m:ChatMessage)=>m&&['user','assistant'].includes(m.role)&&typeof m.content==='string').slice(-32)})) as ChatRoom[];
   return checked.length?checked:[newRoom()];
  }catch{return [newRoom()];}
@@ -72,6 +72,7 @@ export default function AgentChatPanel(){
  const [attachment,setAttachment]=useState<Attachment|null>(null);
  const [busy,setBusy]=useState(false);
  const [connected,setConnected]=useState(false);
+ const [usedModel,setUsedModel]=useState('');
  const [error,setError]=useState('');
  const [toolPrompt,setToolPrompt]=useState('');
  const [toolBusy,setToolBusy]=useState(false);
@@ -99,10 +100,10 @@ export default function AgentChatPanel(){
   setRooms(prev=>prev.map(r=>r.id===roomId?{...r,updated:Date.now(),messages:r.messages.map(m=>m.id===messageId?update(m):m)}:r));
  }
  function newChat(){
-  abortRef.current?.abort();setBusy(false);setConnected(false);setError('');setDraft('');setAttachment(null);
+  abortRef.current?.abort();setBusy(false);setConnected(false);setUsedModel('');setError('');setDraft('');setAttachment(null);
   const room=newRoom();setRooms(prev=>[room,...prev].slice(0,16));setActiveId(room.id);setShowHistory(false);
  }
- function selectRoom(id:string){abortRef.current?.abort();setBusy(false);setConnected(false);setError('');setActiveId(id);setShowHistory(false);}
+ function selectRoom(id:string){abortRef.current?.abort();setBusy(false);setConnected(false);setUsedModel('');setError('');setActiveId(id);setShowHistory(false);}
  function deleteRoom(id:string){
   if(rooms.length===1){const room=newRoom();setRooms([room]);setActiveId(room.id);return;}
   const next=rooms.filter(r=>r.id!==id);if(id===activeId){abortRef.current?.abort();setBusy(false);setActiveId(next[0].id);}
@@ -110,7 +111,7 @@ export default function AgentChatPanel(){
  }
  function setMode(mode:Mode){setRooms(prev=>prev.map(r=>r.id===activeId?{...r,mode}:r));}
  function setModel(model:AIModel){
-  setConnected(false);
+  setConnected(false);setUsedModel('');
   setRooms(prev=>prev.map(r=>r.id===activeId?{...r,model}:r));
  }
  async function readAttachment(file:File|undefined){
@@ -153,6 +154,8 @@ export default function AgentChatPanel(){
     try{details=await response.json();}catch{}
     throw Error(apiError(details,response.status,conversationModel));
    }
+   const realProvider=response.headers.get('x-star-used-model')||conversationModel;
+   setUsedModel(realProvider);
    if(!(response.headers.get('content-type')||'').includes('text/event-stream')||!response.body)
     throw Error('الخدمة لم ترجع تدفقاً حقيقياً من نموذج الذكاء.');
    const reader=response.body.getReader(),decoder=new TextDecoder();
@@ -171,13 +174,16 @@ export default function AgentChatPanel(){
      let event:{response?:string;error?:string;choices?:{delta?:{content?:string}}[]}={};
      try{event=JSON.parse(payload);}catch{continue;}
      if(event.error)throw Error(event.error);
-     const part=conversationModel===PRIVATE_MODEL?event.choices?.[0]?.delta?.content:event.response;
+     const privatePart=event.choices?.[0]?.delta?.content;
+     const cloudPart=event.response;
+     const part=typeof privatePart==='string'?privatePart:cloudPart;
      if(typeof part!=='string'||!part)continue;
-     accumulated=conversationModel===CLOUD_MODEL&&part.startsWith(accumulated)?part:accumulated+part;
+     accumulated=typeof privatePart==='string'?accumulated+part:
+       part.startsWith(accumulated)?part:accumulated+part;
      patchMessage(roomId,assistant.id,m=>({...m,content:accumulated}));
     }
    }
-   if(!done&&conversationModel===PRIVATE_MODEL)throw Error('انقطع رد نموذج Vast.ai قبل أن يكتمل.');
+   if(!done&&realProvider===PRIVATE_MODEL)throw Error('انقطع رد نموذج Vast.ai قبل أن يكتمل.');
    if(!accumulated.trim())throw Error('النموذج لم يُرجع نصاً. أعد المحاولة.');
    setConnected(true);
   }catch(err){
@@ -250,10 +256,15 @@ export default function AgentChatPanel(){
      </select></label>
      <label className="agent-mode-picker"><span>النموذج</span>
       <select aria-label="نموذج الدردشة" value={selected.model} disabled={busy} onChange={e=>setModel(e.target.value as AIModel)}>
-       {AI_MODELS.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}
+       {CHAT_MODELS.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}
       </select>
      </label>
     </div>
+    {selected.model===AUTO_MODEL&&<p className="agent-auto-note" role="note">
+      الوضع التلقائي يحاول Qwen أولاً؛ عند تعذره قبل بدء البث قد تُرسل رسائلك إلى Cloudflare Llama.
+      اختر نموذجاً محدداً إذا كانت سياسة خصوصية مشروعك تمنع تبديل المزوّد.
+    </p>}
+    {usedModel&&<p className="agent-auto-used" role="status">النموذج المستخدم في آخر استجابة: <strong dir="ltr">{usedModel}</strong></p>}
     <div className="agent-messages" ref={scrollRef} role="log" aria-live="polite" aria-relevant="additions text">
      {!selected.messages.length?<div className="agent-welcome">
       <div className="agent-orb">✳</div><span className="agent-welcome-label">PRIVATE · CLOUD AI</span>
