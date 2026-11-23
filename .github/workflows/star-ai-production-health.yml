@@ -1,5 +1,11 @@
 name: STAR AI Production Health
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/check-star-health.mjs'
+      - 'apps/web/tests/star-cloud-health.test.mjs'
+      - '.github/workflows/star-ai-production-health.yml'
   pull_request:
     paths:
       - 'scripts/check-star-health.mjs'
