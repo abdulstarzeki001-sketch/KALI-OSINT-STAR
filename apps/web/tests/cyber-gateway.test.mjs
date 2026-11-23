@@ -157,3 +157,19 @@ test('fast DOM XSS heuristic avoids static HTML literals and unrelated logs',asy
   }
   assert.equal(auditLocally('document.body.innerHTML = input;','logs').findings.length,0);
 });
+
+
+test('Access-protected model list preserves only a bounded Tailscale state, not secrets',async()=>{
+  const env={...ENV,STAR_AI:{fetch:async()=>new Response(JSON.stringify({reply:'not needed'}))}};
+  const fetchUpstream=async()=>new Response(JSON.stringify({
+    object:'list',data:[],tailnet_status:'auth_failed',private_url:'https://never.expose.ts.net'
+  }),{status:200,headers:{'content-type':'application/json'}});
+  const r=await handleCyberPost({request:req({action:'models'}),env},fetchUpstream);
+  assert.equal(r.status,200);
+  const data=await r.json();
+  assert.equal(data.tailnet_status,'auth_failed');
+  assert.equal(data.data.length,1);
+  assert.equal(data.data[0].id,'llama-cloudflare');
+  assert.equal(JSON.stringify(data).includes('never.expose'),false);
+  assert.equal((await handleCyberPost({request:req({action:'models'},{jwt:''}),env},fetchUpstream)).status,401);
+});
