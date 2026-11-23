@@ -1,5 +1,10 @@
 name: STAR AI Production Health
 on:
+  pull_request:
+    paths:
+      - 'scripts/check-star-health.mjs'
+      - 'apps/web/tests/star-cloud-health.test.mjs'
+      - '.github/workflows/star-ai-production-health.yml'
   workflow_dispatch:
   schedule:
     - cron: '21 */6 * * *'
@@ -20,4 +25,5 @@ jobs:
       - name: Verify monitor with synthetic responses
         run: node --test apps/web/tests/star-cloud-health.test.mjs
       - name: Check real endpoints
+        if: github.event_name != 'pull_request'
         run: node scripts/check-star-health.mjs
