@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 
+# Report enrollment state only, never any auth key or private tailnet URL.
+export STAR_TAILNET_STATE=not_configured
+
 if [ -n "${STAR_TAILNET_OLLAMA_URL:-}" ] && [ -n "${TS_AUTHKEY:-}" ]; then
     umask 077
     runtime_dir=$(mktemp -d /tmp/star-tailnet.XXXXXX)
@@ -15,15 +18,19 @@ if [ -n "${STAR_TAILNET_OLLAMA_URL:-}" ] && [ -n "${TS_AUTHKEY:-}" ]; then
     tailscale_pid=$!
     if ! tailscale --socket="$socket" up --timeout=45s --auth-key="file:$auth_file" \
         --hostname=star-ai-cyber-gateway --accept-dns=false --accept-routes=false --shields-up; then
+        STAR_TAILNET_STATE=auth_failed
         echo 'Tailscale enrollment failed; starting without Ollama' >&2
         kill "$tailscale_pid" 2>/dev/null || true
         wait "$tailscale_pid" 2>/dev/null || true
         unset STAR_TAILNET_OLLAMA_URL
+    else
+        STAR_TAILNET_STATE=enrolled
     fi
 
     rm -f "$auth_file"
     trap - EXIT
 elif [ -n "${STAR_TAILNET_OLLAMA_URL:-}" ]; then
+    STAR_TAILNET_STATE=missing_key
     echo 'Tailscale auth key is missing; starting without Ollama' >&2
     unset STAR_TAILNET_OLLAMA_URL
 fi
