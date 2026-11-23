@@ -4,7 +4,7 @@ import './star-os.css';
 export type OSDestination='agent'|'runtime'|'terminal'|'cyber'|'ai'|'operations';
 type ServiceState='checking'|'online'|'login'|'error';
 type Service={state:ServiceState;note:string};
-type Checks={agent:Service;models:Service};
+type Checks={access:Service;agent:Service;models:Service};
 const CHECKING:Service={state:'checking',note:'جارٍ الفحص'};
 const STATUS:Record<ServiceState,string>={
  checking:'جارٍ التحقق',online:'متصل',login:'المصادقة مطلوبة',error:'تعذر الاتصال'
@@ -22,18 +22,30 @@ async function checkResponse(url:string,signal:AbortSignal,init?:RequestInit):Pr
  return fetch(url,{credentials:'same-origin',cache:'no-store',...init,signal});
 }
 function classify(response:Response):Service|null{
+ // A gateway can redirect an expired Access session to HTML with HTTP 200.
+ if(response.redirected||((response.headers.get('content-type')||'').includes('text/html')))
+   return {state:'login',note:'جلسة Access تحتاج تجديداً؛ افتح رابط تسجيل الدخول'};
  if(response.status===401||response.status===403)return {state:'login',note:'يلزم الدخول عبر Cloudflare Access'};
  if(!response.ok)return {state:'error',note:'HTTP '+response.status};
  return null;
 }
 export default function StarOSPanel({navigate}:{navigate:(page:OSDestination)=>void}){
- const [checks,setChecks]=useState<Checks>({agent:CHECKING,models:CHECKING});
+ const [checks,setChecks]=useState<Checks>({access:CHECKING,agent:CHECKING,models:CHECKING});
  const [updated,setUpdated]=useState<string>('');
  const [refreshing,setRefreshing]=useState(false);
  const refresh=useCallback(async (signal:AbortSignal)=>{
   setRefreshing(true);
-  setChecks({agent:CHECKING,models:CHECKING});
-  const [agent,models]=await Promise.all([
+  setChecks({access:CHECKING,agent:CHECKING,models:CHECKING});
+  const [access,agent,models]=await Promise.all([
+   (async ():Promise<Service>=>{
+    try{
+     const response=await checkResponse('/api/access/session',signal);
+     const denied=classify(response);if(denied)return denied;
+     const body=await response.json();
+     if(body?.authenticated!==true||body?.jwt_verified!==true)return {state:'error',note:'رد المصادقة لا يثبت جلسة صحيحة'};
+     return {state:'online',note:'تم التحقق من توقيع جلسة Cloudflare Access وصلاحيتها'};
+    }catch(e){return {state:'error',note:e instanceof Error&&e.name==='AbortError'?'أُلغي الفحص':'تعذر التأكد من جلسة Access. افتح تسجيل الدخول ثم أعد الفحص'};}
+   })(),
    (async ():Promise<Service>=>{
     try{
      const response=await checkResponse('/api/agent/health',signal);
@@ -57,7 +69,7 @@ export default function StarOSPanel({navigate}:{navigate:(page:OSDestination)=>v
     }catch(e){return {state:'error',note:e instanceof Error&&e.name==='AbortError'?'أُلغي الفحص':'تعذر جلب قائمة النماذج'};}
    })()
   ]);
-  if(!signal.aborted){setChecks({agent,models});setUpdated(new Date().toLocaleTimeString('ar-IQ'));setRefreshing(false);}
+  if(!signal.aborted){setChecks({access,agent,models});setUpdated(new Date().toLocaleTimeString('ar-IQ'));setRefreshing(false);}
  },[]);
  useEffect(()=>{const controller=new AbortController();void refresh(controller.signal);return ()=>controller.abort();},[refresh]);
  return <section className="star-os page-animate" dir="rtl" aria-label="STAR AI OS">
@@ -72,6 +84,12 @@ export default function StarOSPanel({navigate}:{navigate:(page:OSDestination)=>v
    </button>
   </header>
   <div className="star-os-health" aria-live="polite">
+   <article className={'star-os-pulse '+checks.access.state}>
+    <div className="star-os-pulse-top"><strong>Cloudflare Access</strong><span>{STATUS[checks.access.state]}</span></div>
+    <p>{checks.access.note}</p>
+    {checks.access.state!=='online'&&checks.access.state!=='checking'&&
+     <a className="star-os-login" href="https://kali-osint-star.pages.dev/">فتح تسجيل الدخول ↗</a>}
+   </article>
    <article className={'star-os-pulse '+checks.agent.state}>
     <div className="star-os-pulse-top"><strong>Railway Agent</strong><span>{STATUS[checks.agent.state]}</span></div>
     <p>{checks.agent.note}</p>
