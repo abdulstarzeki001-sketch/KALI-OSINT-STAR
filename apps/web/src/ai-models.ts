@@ -1,7 +1,8 @@
 export const PRIVATE_MODEL = 'qwen3-coder-vast';
 export const CLOUD_MODEL = 'llama-cloudflare';
 export const AUTO_MODEL = 'star-ai-auto';
-export type AIModel = typeof PRIVATE_MODEL | typeof CLOUD_MODEL | typeof AUTO_MODEL;
+export type AIModel = typeof PRIVATE_MODEL | typeof CLOUD_MODEL;
+export type ChatModel = AIModel | typeof AUTO_MODEL;
 
 // Report analysis supports only explicit models until its server route adds fallback.
 export const AI_MODELS: {id: AIModel; label: string}[] = [
@@ -10,7 +11,7 @@ export const AI_MODELS: {id: AIModel; label: string}[] = [
 ];
 
 // Auto is opt-in in the chat UI because fallback may send text to Cloudflare.
-export const CHAT_MODELS: {id: AIModel; label: string}[] = [
+export const CHAT_MODELS: {id: ChatModel; label: string}[] = [
   {id: AUTO_MODEL, label: 'تلقائي: Qwen ثم Llama عند التعذر'},
   ...AI_MODELS
 ];
