@@ -4,10 +4,10 @@ import {readFileSync} from 'node:fs';
 import {handleChatPost} from '../functions/api/ai/chat.js';
 import {ownerToken,resetCerts} from './access-test-keys.mjs';
 
-const URL='https://kali-osint-star.pages.dev/api/ai/chat';
+const CHAT_ENDPOINT='https://kali-osint-star.pages.dev/api/ai/chat';
 const msgs=[{role:'user',content:'Review this synthetic code snippet for reliability.'}];
 function input(model='star-ai-auto'){
- return new Request(URL,{method:'POST',headers:{'content-type':'application/json','Cf-Access-Jwt-Assertion':ownerToken},
+ return new Request(CHAT_ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Cf-Access-Jwt-Assertion':ownerToken},
    body:JSON.stringify({model,mode:'code',stream:true,messages:msgs})});
 }
 test.beforeEach(resetCerts);
@@ -42,7 +42,7 @@ test('auto transparently falls back to Cloudflare on private 503 before stream',
 });
 test('auto still enforces Cloudflare Access and never forwards unsigned requests',async()=>{
  let called=0;
- const req=new Request(URL,{method:'POST',headers:{'content-type':'application/json'},
+ const req=new Request(CHAT_ENDPOINT,{method:'POST',headers:{'content-type':'application/json'},
   body:JSON.stringify({model:'star-ai-auto',mode:'general',stream:true,messages:msgs})});
  const r=await handleChatPost({request:req,env:{STAR_AI:{fetch(){called++;}}}},async()=>{called++;});
  assert.equal(r.status,401);assert.equal(called,0);
