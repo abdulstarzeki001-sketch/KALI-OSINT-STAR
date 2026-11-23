@@ -103,7 +103,7 @@ class CloudflarePlanner:
             transport=self.transport) as client:
             response=await client.post(self.url,headers=headers,json=payload)
             if response.is_redirect or response.status_code in (401,403):
-                raise ValueError('STAR AI model gateway rejected authentication')
+                raise ValueError('STAR AI gateway rejected authentication' if self.model_key else 'Cloudflare Access rejected the agent model session')
             if response.status_code!=200:
                 raise ValueError('Cloudflare model unavailable (HTTP '+str(response.status_code)+')')
             try:
