@@ -19,6 +19,7 @@ const REVIEW_KINDS = new Set(['code', 'config', 'headers', 'logs', 'report']);
 const RULES = [
   {id:'PRIVATE_KEY',severity:'critical',pattern:/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i,fix:'Remove private keys from source and rotate any exposed key.'},
   {id:'HARDCODED_SECRET',severity:'high',pattern:/\b(?:password|api[_-]?key|client_secret|access_token)\s*[:=]\s*['"][^'"\n]{8,}['"]/i,fix:'Store credentials in a secret manager and rotate exposed values.'},
+  {id:'DOM_XSS_CANDIDATE',severity:'medium',codeOnly:true,pattern:/\.innerHTML\s*=\s*(?!['"\x60]|DOMPurify\.sanitize\s*\(|sanitizeHTML\s*\()\S/i,fix:'Potential DOM XSS sink. Trace input provenance and prefer textContent or vetted HTML sanitization.'},
   {id:'SHELL_TRUE',severity:'high',pattern:/\bshell\s*=\s*True\b/i,fix:'Avoid shell invocation with interpolated input; pass fixed argument arrays.'},
   {id:'UNSAFE_EVAL',severity:'high',pattern:/(?:^|[^\w])eval\s*\(/i,fix:'Remove dynamic evaluation of untrusted input.'},
   {id:'TLS_VERIFICATION_OFF',severity:'high',pattern:/\bverify\s*=\s*False\b|\brejectUnauthorized\s*:\s*false\b/i,fix:'Enable certificate verification and fix trust configuration.'},
@@ -93,6 +94,7 @@ export function auditArtifact(artifact,kind='code') {
   const findings=[];
   for(let i=0;i<lines.length;i++) {
     for(const rule of RULES) {
+      if(rule.codeOnly&&kind!=='code')continue;
       if(rule.pattern.test(lines[i])&&findings.length<60) {
         findings.push({id:rule.id,severity:rule.severity,line:i+1,
           evidence:'Pattern detected; source snippet withheld to protect secrets.',

@@ -25,3 +25,11 @@ test('existing JSON and SARIF exports still exist',()=>{
  assert.match(source,/star-cyber-deep-audit\.json/);
  assert.match(source,/star-cyber-deep-audit\.sarif/);
 });
+
+test('AI review timeouts leave deterministic local audit available and disclose optional provider change',()=>{
+ assert.match(source,/action==='review'\?\{signal:AbortSignal\.timeout\(75000\)\}/);
+ assert.match(source,/model!=='llama-cloudflare'/);
+ assert.match(source,/الفحص النصي المحلي مستقل ويمكن تشغيله/);
+ assert.match(source,/اختر llama-cloudflare يدوياً/);
+ assert.doesNotMatch(source,/setModel\('llama-cloudflare'\)/);
+});

@@ -132,3 +132,28 @@ test('deep audit file count, size, malformed format rejected before Railway',asy
   }
   assert.equal(f.seen.length,0);
 });
+
+test('fast audit detects suspicious DOM HTML sinks alongside hardcoded secrets',async()=>{
+  const code=[
+    'const password = "demo-test-only";',
+    'const input = location.hash.slice(1);',
+    'document.body.innerHTML = input;'
+  ].join('\n');
+  const r=await handleCyberPost({request:req({action:'audit',kind:'code',artifact:code}),env:{}},
+    async()=>{throw Error('No remote provider needed');});
+  assert.equal(r.status,200);
+  const out=await r.json();
+  assert.equal(out.lines_analyzed,3);
+  assert.ok(out.findings.some(x=>x.id==='HARDCODED_SECRET'&&x.line===1));
+  assert.ok(out.findings.some(x=>x.id==='DOM_XSS_CANDIDATE'&&x.line===3&&x.severity==='medium'));
+  assert.equal(JSON.stringify(out).includes('demo-test-only'),false);
+});
+test('fast DOM XSS heuristic avoids static HTML literals and unrelated logs',async()=>{
+  const {auditLocally}=await import('../functions/api/ai/local-audit.js');
+  const safe='document.body.innerHTML = "<p>Hello</p>";';
+  const sanitized='document.body.innerHTML = DOMPurify.sanitize(input);';
+  for(const source of [safe,sanitized]) {
+    assert.equal(auditLocally(source,'code').findings.some(x=>x.id==='DOM_XSS_CANDIDATE'),false);
+  }
+  assert.equal(auditLocally('document.body.innerHTML = input;','logs').findings.length,0);
+});

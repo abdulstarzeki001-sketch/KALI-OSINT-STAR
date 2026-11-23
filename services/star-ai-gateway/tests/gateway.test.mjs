@@ -157,3 +157,27 @@ test('does not turn internal reasoning into an answer, preserves length stop',as
  const response=await handler(request('/v1/chat/completions',payload));
  assert.equal((await response.json()).choices[0].finish_reason,'length');
 });
+
+test('Railway quick audit matches the iPhone three-line example without sending source',async()=>{
+  const {handler,calls}=fixture();
+  const artifact=[
+    'const password = "demo-test-only";',
+    'const input = location.hash.slice(1);',
+    'document.body.innerHTML = input;'
+  ].join('\n');
+  const response=await handler(request('/v1/security/audit',{artifact,kind:'code'}));
+  assert.equal(response.status,200);
+  const body=await response.json();
+  assert.equal(body.lines_analyzed,3);
+  assert.ok(body.findings.some(x=>x.id==='HARDCODED_SECRET'&&x.line===1));
+  assert.ok(body.findings.some(x=>x.id==='DOM_XSS_CANDIDATE'&&x.line===3));
+  assert.equal(JSON.stringify(body).includes('demo-test-only'),false);
+  assert.equal(calls.length,0);
+});
+test('quick audit does not flag static HTML strings, sanitizer or untrusted logs as code',()=>{
+  for(const artifact of [
+    'element.innerHTML = "<p>trusted</p>";',
+    'element.innerHTML = DOMPurify.sanitize(input);'
+  ])assert.equal(auditArtifact(artifact,'code').findings.some(f=>f.id==='DOM_XSS_CANDIDATE'),false);
+  assert.equal(auditArtifact('element.innerHTML = input','logs').findings.length,0);
+});
