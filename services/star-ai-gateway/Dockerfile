@@ -5,7 +5,7 @@ RUN apk add --no-cache tini
 COPY --from=tailscale /usr/local/bin/tailscale /usr/local/bin/tailscaled /usr/local/bin/
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
-COPY --chown=node:node gateway.mjs server.mjs access-jwt.mjs deep-audit.mjs ./
+COPY --chown=node:node gateway.mjs server.mjs access-jwt.mjs deep-audit.mjs qwen-probe.mjs ./
 COPY --chown=node:node start.sh tailnet-provider.mjs ./
 USER node
 ENV PORT=8080
