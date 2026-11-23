@@ -38,6 +38,31 @@ function saveReport(name:string, data:unknown){
   const a=document.createElement('a');a.href=link;a.download=name;a.click();
   window.setTimeout(()=>URL.revokeObjectURL(link),1000);
 }
+
+function saveMarkdownReport(report:DeepAudit){
+  // Export findings only; never include source code, log contents or credentials.
+  const lines=['# STAR Cyber Deep Audit', '',
+    'Engine: '+report.engine,
+    'Files analyzed: '+report.summary.files_analyzed,
+    'Rules available: '+report.summary.rules_available,
+    'Findings (heuristic, not confirmed vulnerabilities): '+report.summary.findings,
+    'Results truncated: '+(report.summary.truncated?'yes':'no'),'',
+    '## Findings', ''];
+  for(const finding of report.findings){
+    lines.push('### '+finding.id+' — '+finding.title,
+      '- Severity: '+finding.severity,
+      '- CWE: '+finding.cwe,
+      '- Confidence: '+finding.confidence,
+      '- Location: '+finding.path+':'+finding.line,
+      '- Recommendation: '+finding.recommendation,'');
+  }
+  lines.push('## Limitations',report.limitation,
+    'Validate every result before treating it as a confirmed vulnerability.');
+  const url=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/markdown;charset=utf-8'}));
+  const anchor=document.createElement('a');anchor.href=url;anchor.download='star-cyber-deep-audit.md';anchor.click();
+  window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
 export default function CyberAIPanel(){
   const [kind,setKind]=useState<Kind>('code');
   const [artifact,setArtifact]=useState('');
@@ -56,7 +81,15 @@ export default function CyberAIPanel(){
   const [deepRunning,setDeepRunning]=useState<'scan'|'export'|'explain'|null>(null);
   const [deepError,setDeepError]=useState('');
   const [deepFeedback,setDeepFeedback]=useState('');
+  const [severityFilter,setSeverityFilter]=useState('all');
+  const [findingQuery,setFindingQuery]=useState('');
   const deepInputCount=uploadedFiles.length+(artifact.trim().length>=3?1:0);
+  const severities=Array.from(new Set(deepReport?.findings.map(f=>f.severity)||[])).sort();
+  const visibleFindings=(deepReport?.findings||[]).filter(f=>{
+    if(severityFilter!=='all'&&f.severity!==severityFilter)return false;
+    const query=findingQuery.trim().toLowerCase();
+    return !query||[f.id,f.title,f.cwe,f.path,f.recommendation].some(v=>v.toLowerCase().includes(query));
+  });
   useEffect(()=>{
     let alive=true;
     invoke('models').then(data=>{
@@ -199,6 +232,7 @@ export default function CyberAIPanel(){
         </div>
         <div className="cyber-deep-actions">
           <button type="button" onClick={()=>saveReport('star-cyber-deep-audit.json',deepReport)}>تنزيل JSON</button>
+          <button type="button" onClick={()=>saveMarkdownReport(deepReport)}>تنزيل تقرير Markdown</button>
           <button type="button" disabled={!!deepRunning} onClick={()=>void exportSarif()}>
             {deepRunning==='export'?'جارٍ التصدير...':'تنزيل SARIF لـGitHub'}
           </button>
@@ -207,12 +241,25 @@ export default function CyberAIPanel(){
           </button>
         </div>
         {deepReport.summary.truncated&&<p className="cyber-error">النتائج وصلت إلى الحد الأقصى 100 مؤشر؛ قلل الملفات أو قسم الفحص.</p>}
+        <div className="cyber-findings-controls">
+          <label htmlFor="cyber-severity-filter">درجة الخطورة
+           <select id="cyber-severity-filter" value={severityFilter} onChange={e=>setSeverityFilter(e.target.value)}>
+            <option value="all">الكل</option>
+            {severities.map(value=><option key={value} value={value}>{value}</option>)}
+           </select>
+          </label>
+          <label htmlFor="cyber-findings-search">بحث في النتائج
+           <input id="cyber-findings-search" value={findingQuery} maxLength={120}
+            onChange={e=>setFindingQuery(e.target.value)} placeholder="CWE أو اسم الملف أو القاعدة"/>
+          </label>
+          <span role="status">عرض {visibleFindings.length} من {deepReport.findings.length} مؤشر</span>
+        </div>
         <div className="cyber-deep-findings">
-          {deepReport.findings.length?deepReport.findings.map((f,i)=><article className="cyber-finding" key={f.id+f.path+f.line+i}>
+          {visibleFindings.length?visibleFindings.map((f,i)=><article className="cyber-finding" key={f.id+f.path+f.line+i}>
             <div><strong dir="ltr">{f.id} · {f.cwe}</strong><span>{f.severity} · {f.confidence}</span></div>
             <div className="cyber-location" dir="ltr">{f.path}:{f.line} — {f.title}</div>
             <p>{f.recommendation}</p>
-          </article>):<p>لا توجد مؤشرات تطابق القواعد المستخدمة. هذا لا يثبت خلو الملفات من الثغرات.</p>}
+          </article>):<p>{deepReport.findings.length?'لا توجد نتائج مطابقة للبحث أو الفلتر.':'لا توجد مؤشرات تطابق القواعد المستخدمة. هذا لا يثبت خلو الملفات من الثغرات.'}</p>}
         </div>
         <small>{deepReport.limitation}</small>
       </div>}
