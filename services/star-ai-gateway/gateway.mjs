@@ -29,6 +29,11 @@ const RULES = [
 function json(value,status=200) {
   return new Response(JSON.stringify(value),{status,headers:JSON_HEADERS});
 }
+// Safe bootstrap metadata from the Railway entrypoint, not an inference health claim.
+const TAILNET_STATES=new Set(['not_configured','missing_key','auth_failed','enrolled']);
+function tailnetState(env){
+  return TAILNET_STATES.has(env.STAR_TAILNET_STATE)?env.STAR_TAILNET_STATE:'unknown';
+}
 const ERROR_HINTS={
  unauthorized:'Gateway authentication required. Check the API key and Authorization header.',
  model_not_configured:'Model ID is not configured. Fetch the authenticated /v1/models list.',
@@ -210,7 +215,7 @@ export function createGateway({env=process.env,fetchImpl=globalThis.fetch,now=()
       return fail(401,'unauthorized');
     if((pathname==='/v1'||pathname==='/v1/')&&request.method==='GET')return json({service:'star-ai-cyber-gateway',object:'api',models:'/v1/models',chat:'/v1/chat/completions',text_only:true});
     if(pathname==='/v1/models'&&request.method==='GET')
-      return json({object:'list',data:models.filter(x=>x.key).map(x=>({id:x.id,object:'model',owned_by:'star-ai'}))});
+      return json({object:'list',data:models.filter(x=>x.key).map(x=>({id:x.id,object:'model',owned_by:'star-ai'})),tailnet_status:tailnetState(env)});
     if(pathname==='/v1/security/capabilities'&&request.method==='GET')return json({deep_audit:true,sarif:true,limits:deepAuditLimits});
     if(!['/v1/chat/completions','/v1/security/audit','/v1/security/review','/v1/security/deep-audit'].includes(pathname))
       return fail(404,'not_found');
