@@ -4,6 +4,7 @@ Run in an isolated deployment with a private Qwen CPU inference URL. This is
 NOT the existing public website or its Terminal service.
 """
 import os
+import asyncio
 from pathlib import Path
 import re
 from typing import Any
@@ -46,6 +47,7 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
         engine=Engine(executor,model,Store(state/'agent-tasks.sqlite'))
     app=FastAPI(title='STAR AI CPU Agent',docs_url=None,openapi_url=None,redoc_url=None)
     app.state.engine=engine
+    app.state.model_probe={'state':'not_run'}
     public=Path(__file__).resolve().parent/'static'/'index.html'
 
     @app.middleware('http')
@@ -89,6 +91,32 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
             # them to a different browser session after container restart.
             raise HTTPException(404,'Task not active')
 
+
+    async def run_model_probe():
+        app.state.model_probe={'state':'running'}
+        try:
+            answer=await asyncio.wait_for(engine.model.complete([
+                {'role':'user','content':
+                    'Health check. Respond with exactly one JSON object: '
+                    '{"action":"finish","message":"STAR_AGENT_PROBE_OK"}. '
+                    'Do not request tools or browse.'}
+            ]),timeout=65)
+            if isinstance(answer,dict) and answer.get('content')=='STAR_AGENT_PROBE_OK':
+                app.state.model_probe={'state':'ok'}
+            else:
+                app.state.model_probe={'state':'invalid_action'}
+        except Exception as exc:
+            app.state.model_probe={'state':'failed','error_type':type(exc).__name__}
+        print('STAR_AGENT_MODEL_PROBE '+app.state.model_probe['state'],flush=True)
+
+    @app.on_event('startup')
+    async def startup_model_probe():
+        # Nonblocking one-shot test; never spend model tokens on routine health probes.
+        if (os.getenv('STAR_AGENT_STARTUP_PROBE')=='1'
+                and isinstance(engine.model,CloudflarePlanner)
+                and not engine.model.requires_owner_access):
+            asyncio.create_task(run_model_probe())
+
     @app.get('/',response_class=HTMLResponse)
     async def home():
         return HTMLResponse(public.read_text(encoding='utf-8'))
@@ -97,7 +125,8 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
         return {'ok':True,'service':'star-agent-cpu','tool_mode':'approval-gated',
                 'model_endpoint_configured':True,'model_backend':(
                   'cloudflare' if isinstance(engine.model,CloudflarePlanner) else 'cpu'),
-                'live_inference_tested':False,'allowed_host_count':len(engine.executor.hosts)}
+                'live_inference_tested':app.state.model_probe['state']=='ok',
+                'model_probe':app.state.model_probe,'allowed_host_count':len(engine.executor.hosts)}
     @app.post('/api/tasks',status_code=202)
     async def submit(req:Request):
         session=await auth(req)
