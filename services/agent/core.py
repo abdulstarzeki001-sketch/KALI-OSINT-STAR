@@ -332,7 +332,10 @@ class Engine:
                     calls=message.get('tool_calls') or []
                     if not calls:
                         t.result=str(message.get('content') or 'No answer from model')[:8000]
-                        t.status='completed';self.add_event(t,'completed',{'message':t.result})
+                        invalid=message.get('invalid_action') is True
+                        t.status='failed' if invalid else 'completed'
+                        self.add_event(t,'invalid_action' if invalid else 'completed',
+                                       {'message':t.result})
                         return
                     if len(calls)>5:raise ValueError('Too many model tool calls')
                     t.messages.append({'role':'assistant','content':message.get('content'),'tool_calls':calls})
