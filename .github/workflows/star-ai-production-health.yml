@@ -1,0 +1,23 @@
+name: STAR AI Production Health
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '21 */6 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: star-ai-production-health
+  cancel-in-progress: true
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Verify monitor with synthetic responses
+        run: node --test apps/web/tests/star-cloud-health.test.mjs
+      - name: Check real endpoints
+        run: node scripts/check-star-health.mjs
