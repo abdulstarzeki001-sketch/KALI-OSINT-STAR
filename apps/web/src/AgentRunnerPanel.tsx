@@ -8,7 +8,7 @@ type Task={
   events:Event[];created:number
 };
 type Health={ok:boolean;service:string;tool_mode:string;model_backend:string;
- live_inference_tested:boolean;allowed_host_count:number};
+ live_inference_tested:boolean;allowed_host_count:number;model_probe?:{state?:string;error_category?:string}};
 type ErrorBody={error?:string;detail?:string};
 const FINAL=new Set(['completed','failed','rejected','interrupted']);
 
@@ -33,6 +33,8 @@ const EXAMPLES=[
 ];
 export default function AgentRunnerPanel(){
  const [prompt,setPrompt]=useState('');
+ const [taskLookup,setTaskLookup]=useState('');
+ const [lookupBusy,setLookupBusy]=useState(false);
  const [current,setCurrent]=useState<Task|null>(null);
  const [health,setHealth]=useState<Health|null>(null);
  const [busy,setBusy]=useState(false);
@@ -55,6 +57,18 @@ export default function AgentRunnerPanel(){
   const interval=window.setInterval(()=>{void refresh(current.id);},2500);
   return ()=>window.clearInterval(interval);
  },[current?.id,current?.status]);
+ async function loadTask(){
+  const id=taskLookup.trim().toLowerCase();
+  if(!/^[a-f0-9]{24}$/.test(id)){setError('رقم المهمة يجب أن يكون 24 خانة سداسية');return;}
+  setLookupBusy(true);setError('');setMessage('');
+  try{
+   const task=await requestAgent('tasks/'+encodeURIComponent(id)) as unknown as Task;
+   setCurrent(task);
+   setMessage('تم تحميل المهمة من Railway باستخدام جلسة Cloudflare Access الحالية.');
+  }catch(e){setError((e instanceof Error?e.message:'تعذر فتح المهمة')+
+   ' — إذا كانت المهمة مرسلة من Minis بمفتاح مستقل، افتحها في لوحة Railway الخاصة بالمالك.');}
+  finally{setLookupBusy(false);}
+ }
  async function submit(){
   if(busy||!prompt.trim())return;
   setError('');setMessage('');setBusy(true);
@@ -84,7 +98,7 @@ export default function AgentRunnerPanel(){
   </div>
   <div className="runner-status" role="status">
    <div><strong>حالة خدمة الوكيل</strong><span>{health?.ok?'الخدمة تستجيب':'لم يُتحقق من اتصال الخدمة'}</span></div>
-   <div><strong>محرك الاستدلال</strong><span>{health?.model_backend==='cloudflare'?'Cloudflare Llama — يتطلب جلسة Access نشطة':health?.model_backend||'غير معروف'}</span></div>
+   <div><strong>محرك الاستدلال</strong><span>{health?.model_backend==='cloudflare'?'Cloudflare AI — ' + (health?.live_inference_tested?'اتصال النموذج مُتحقق':'اتصال النموذج غير مؤكد: '+(health?.model_probe?.state||'غير مفحوص')) + '':health?.model_backend||'غير معروف'}</span></div>
    <div><strong>عزل الأدوات</strong><span>موافقة بشرية قبل التعديل والاختبار</span></div>
    <div><strong>المتصفح</strong><span>معطل في خدمة 1GB الحالية</span></div>
   </div>
@@ -100,6 +114,17 @@ export default function AgentRunnerPanel(){
     <div className="runner-examples">
      <strong>أمثلة مهام</strong>
      {EXAMPLES.map(value=><button type="button" key={value} onClick={()=>setPrompt(value)}>{value}</button>)}
+    </div>
+    <div className="runner-lookup">
+     <h3>فتح مهمة موجودة</h3>
+     <label htmlFor="runner-task-lookup">رقم المهمة (24 خانة)</label>
+     <div className="runner-lookup-input">
+      <input id="runner-task-lookup" dir="ltr" maxLength={24} autoComplete="off"
+       placeholder="0123456789abcdef01234567" value={taskLookup} onChange={e=>setTaskLookup(e.target.value)}/>
+      <button type="button" disabled={lookupBusy} onClick={()=>void loadTask()}>{lookupBusy?'جارٍ الفتح...':'فتح المهمة'}</button>
+     </div>
+     <small>الاسترجاع عبر Cloudflare Access يقتصر على مهام هويتك؛ مهام Minis المستقلة تُراجع من لوحة المالك.</small>
+     <a href="https://star-agent-runner-production.up.railway.app/" rel="noopener noreferrer" target="_blank">لوحة المالك لمهام Minis ↗</a>
     </div>
     <p className="runner-note">مصدر المشروع موجود داخل حاوية Railway. لا تُخزن البيانات الحساسة في المطالبات. موافقتك لا تسمح بأوامر عشوائية؛ قائمة الأوامر محصورة في كود التنفيذ.</p>
    </div>
