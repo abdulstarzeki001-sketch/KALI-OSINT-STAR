@@ -171,10 +171,12 @@ export default function CloudTerminalPanel(){
    ws.send(JSON.stringify({type:'input',data:command+'\r'}));
    setCommand('');
  }
- function sendCtrlC(){
+ function sendTerminalKey(data:string){
    const ws=socket.current;
-   if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'input',data:'\u0003'}));
+   if(!readyRef.current||status!=='ready'||ws?.readyState!==WebSocket.OPEN||data.length>8)return;
+   ws.send(JSON.stringify({type:'input',data}));
  }
+ function sendCtrlC(){sendTerminalKey('\u0003');}
  function disconnect(){
    readyRef.current=false;
    socket.current?.close(1000,'USER_DISCONNECTED');
@@ -236,12 +238,25 @@ export default function CloudTerminalPanel(){
        <button type="button" onClick={clearTerminalOutput} title="مسح الشاشة">⌫ <span>مسح</span></button>
        <button type="button" onClick={disconnect} disabled={status==='idle'} title="قطع الاتصال">⏻ <span>قطع</span></button>
      </div>
+     <div className="star-terminal-mobile-keys" role="toolbar" aria-label="لوحة مفاتيح الترمنال للموبايل">
+       <button type="button" disabled={status!=='ready'} onClick={()=>sendTerminalKey('\t')} aria-label="Tab">Tab</button>
+       <button type="button" disabled={status!=='ready'} onClick={()=>sendTerminalKey('\u001b[A')} aria-label="سهم للأعلى">↑</button>
+       <button type="button" disabled={status!=='ready'} onClick={()=>sendTerminalKey('\u001b[B')} aria-label="سهم للأسفل">↓</button>
+       <button type="button" disabled={status!=='ready'} onClick={()=>sendTerminalKey('\u001b[D')} aria-label="سهم لليسار">←</button>
+       <button type="button" disabled={status!=='ready'} onClick={()=>sendTerminalKey('\u001b[C')} aria-label="سهم لليمين">→</button>
+       <button type="button" disabled={status!=='ready'} onClick={()=>sendTerminalKey('\u001b')} aria-label="Escape">Esc</button>
+     </div>
      <div ref={outputElement} className="star-terminal-output" dir="ltr" aria-label="مخرجات الطرفية"/>
      <form className="star-terminal-input" onSubmit={sendCommand} autoComplete="off">
        <span aria-hidden="true">$</span>
        <input type="text" aria-label="أدخل أمر الترمنال" placeholder={status==='ready'?'مثال: sudo apt update':'اضغط اتصال أولاً'} value={command} maxLength={4096} spellCheck={false} autoComplete="off" autoCapitalize="none" autoCorrect="off" dir="ltr" disabled={status!=='ready'} onChange={e=>setCommand(e.target.value)}/>
        <button type="submit" disabled={status!=='ready'||!command.trim()}>إرسال</button>
      </form>
+     <div className="star-terminal-presets" aria-label="أوامر تطوير جاهزة للكتابة">
+      <span>أوامر سريعة — تعبئة فقط، لا تنفيذ تلقائي:</span>
+      {['pwd','ls -la','git status --short'].map(cmd=><button type="button" key={cmd}
+       disabled={status!=='ready'} onClick={()=>setCommand(cmd)}><code dir="ltr">{cmd}</code></button>)}
+     </div>
    </div>
    <div className="star-terminal-extra">
      <button type="button" aria-expanded={aiOpen} onClick={()=>setAiOpen(x=>!x)}>✧ STAR AI {aiOpen?'▴':'▾'}</button>
