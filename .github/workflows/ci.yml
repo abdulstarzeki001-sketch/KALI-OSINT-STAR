@@ -27,6 +27,7 @@ jobs:
       - run: node --test tests/auto-model-routing.test.mjs
       - run: node --test tests/theme-navigation.test.mjs
       - run: node --test tests/star-os.test.mjs
+      - run: node --test tests/access-session.test.mjs
       - run: node --test tests/agent-workbench-ui.test.mjs
       - run: npm run typecheck
       - run: npm run build
