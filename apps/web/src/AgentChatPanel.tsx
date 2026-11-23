@@ -2,13 +2,13 @@ import {useEffect,useRef,useState} from 'react';
 import type {FormEvent,KeyboardEvent} from 'react';
 import SafeMarkdown from './SafeMarkdown';
 import {CHAT_MODELS,AUTO_MODEL,CLOUD_MODEL,PRIVATE_MODEL} from './ai-models';
-import type {AIModel} from './ai-models';
+import type {ChatModel} from './ai-models';
 import './agent-chat.css';
 
 type Mode='general'|'code'|'security'|'agent';
 type Role='user'|'assistant';
 type ChatMessage={id:string;role:Role;content:string;created:number;error?:boolean};
-type ChatRoom={id:string;title:string;mode:Mode;model:AIModel;messages:ChatMessage[];updated:number};
+type ChatRoom={id:string;title:string;mode:Mode;model:ChatModel;messages:ChatMessage[];updated:number};
 type Attachment={name:string;content:string};
 const SESSION_KEY='star-agent-chat-session-v1';
 const PERSIST_KEY='star-agent-chat-persistent-v1';
@@ -44,7 +44,7 @@ function download(name:string,contents:string,mime='text/markdown;charset=utf-8'
  const a=document.createElement('a');a.href=url;a.download=name;a.click();
  setTimeout(()=>URL.revokeObjectURL(url),500);
 }
-function apiError(data:{error?:string;code?:string},status:number,model?:AIModel){
+function apiError(data:{error?:string;code?:string},status:number,model?:ChatModel){
  if(status===401||status===403)return 'جلسة Cloudflare Access غير صالحة. سجّل الدخول ثم أعد المحاولة.';
  if(status===429)return 'تم بلوغ حد الطلبات. جرّب مرة أخرى.';
  if(status===503)return model===PRIVATE_MODEL
@@ -110,7 +110,7 @@ export default function AgentChatPanel(){
   setRooms(next);
  }
  function setMode(mode:Mode){setRooms(prev=>prev.map(r=>r.id===activeId?{...r,mode}:r));}
- function setModel(model:AIModel){
+ function setModel(model:ChatModel){
   setConnected(false);setUsedModel('');
   setRooms(prev=>prev.map(r=>r.id===activeId?{...r,model}:r));
  }
@@ -255,7 +255,7 @@ export default function AgentChatPanel(){
       {MODES.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}
      </select></label>
      <label className="agent-mode-picker"><span>النموذج</span>
-      <select aria-label="نموذج الدردشة" value={selected.model} disabled={busy} onChange={e=>setModel(e.target.value as AIModel)}>
+      <select aria-label="نموذج الدردشة" value={selected.model} disabled={busy} onChange={e=>setModel(e.target.value as ChatModel)}>
        {CHAT_MODELS.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}
       </select>
      </label>
