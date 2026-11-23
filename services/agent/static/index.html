@@ -3,6 +3,7 @@
 <body><main><h1>✳ STAR AI Agent</h1><p>وكيل CPU: ملفات، اختبارات، متصفح؛ إجراءات حساسة بموافقتك.</p>
 <section><h2>اتصال آمن</h2><p>أدخل مفتاح STAR_AGENT_API_KEY الخاص بالخادم؛ لا يُحفظ داخل المتصفح.</p><input id="key" type="password" autocomplete="off" placeholder="Agent API Key"/><button id="connect">اتصال</button><small id="message"></small></section>
 <section><h2>المهمة</h2><textarea id="prompt" placeholder="مثال: افحص ملفات المشروع وحالة Git، واقترح إصلاحاً، ثم اطلب إذني قبل تعديل الملفات"></textarea><button id="submit">نفّذ المهمة</button><button id="refresh">تحديث</button></section>
+<section><h2>فتح مهمة من Minis</h2><p>إذا أرسل الوكيل مهمة من محادثة Minis، الصق رقمها هنا لمراجعة الحالة وطلبات الموافقة.</p><input id="taskId" autocomplete="off" inputmode="text" placeholder="Task ID — 24 hexadecimal characters"/><button id="loadTask">فتح المهمة</button></section>
 <section id="task" hidden><h2>حالة المهمة: <span id="phase"></span></h2><small id="id"></small><p id="result"></p><div id="approval"></div><div id="events"></div><img id="shot" hidden alt="لقطة صفحة الويب"/></section>
 </main><script>
 "use strict";let token="",id="",timer=null,shotURL="";
@@ -14,6 +15,7 @@ function say(s){el("message").textContent=s}
 el("connect").onclick=()=>{token=el("key").value.trim();el("key").value="";say(token.length>=32?"تم حفظ المفتاح مؤقتاً":"مفتاح غير صالح")};
 el("submit").onclick=async()=>{try{if(!token)throw Error("أدخل المفتاح أولاً");const t=await api("/api/tasks",{method:"POST",body:JSON.stringify({prompt:el("prompt").value})});id=t.id;el("task").hidden=false;el("id").textContent=id;clearInterval(timer);timer=setInterval(refresh,2500);await refresh()}catch(e){say(e.message)}};
 el("refresh").onclick=refresh;
+el("loadTask").onclick=async()=>{try{if(!token)throw Error("أدخل مفتاح الوكيل أولاً");const requested=el("taskId").value.trim().toLowerCase();if(!/^[a-f0-9]{24}$/.test(requested))throw Error("رقم المهمة يجب أن يكون 24 خانة");id=requested;el("task").hidden=false;clearInterval(timer);await refresh();timer=setInterval(refresh,2500)}catch(e){say(e.message)}};
 async function decide(approve){try{await api("/api/tasks/"+id+"/decide",{method:"POST",body:JSON.stringify({approve})});await refresh()}catch(e){say(e.message)}}
 async function refresh(){if(!id||!token)return;try{
  const t=await api("/api/tasks/"+id);el("phase").textContent=t.status;el("result").textContent=t.result||"";
