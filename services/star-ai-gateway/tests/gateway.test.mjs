@@ -181,3 +181,21 @@ test('quick audit does not flag static HTML strings, sanitizer or untrusted logs
   ])assert.equal(auditArtifact(artifact,'code').findings.some(f=>f.id==='DOM_XSS_CANDIDATE'),false);
   assert.equal(auditArtifact('element.innerHTML = input','logs').findings.length,0);
 });
+
+
+test('authenticated model catalog reports tailnet auth failure without URLs, keys or false inference readiness',async()=>{
+  const {handler,calls}=fixture({STAR_TAILNET_STATE:'auth_failed'});
+  const reply=await handler(request('/v1/models',undefined,TOKEN,'GET'));
+  assert.equal(reply.status,200);
+  const data=await reply.json();
+  assert.equal(data.tailnet_status,'auth_failed');
+  assert.equal(data.data[0].id,'qwen-coder');
+  assert.equal(calls.length,0);
+  assert.equal(JSON.stringify(data).includes('STAR_TAILNET_OLLAMA_URL'),false);
+  assert.equal(JSON.stringify(data).includes('upstream-private-key'),false);
+  const denied=await handler(request('/v1/models',undefined,'bad-token','GET'));
+  assert.equal(denied.status,401);
+  const other=createGateway({env:{...ENV,STAR_TAILNET_STATE:'sensitive-private-host'},fetchImpl:async()=>{throw Error('not called')}});
+  const safe=await (await other(request('/v1/models',undefined,TOKEN,'GET'))).json();
+  assert.equal(safe.tailnet_status,'unknown');
+});
