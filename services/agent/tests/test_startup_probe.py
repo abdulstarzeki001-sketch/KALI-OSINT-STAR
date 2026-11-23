@@ -46,7 +46,7 @@ def test_startup_probe_auth_failure_fails_closed(tmp_path,monkeypatch):
         health=_await_terminal_state(client)
         assert health["live_inference_tested"] is False
         assert health["model_probe"]["state"]=="failed"
-        assert "error_type" in health["model_probe"]
+        assert health["model_probe"]["error_category"]=="auth_rejected"
 
 def test_startup_probe_is_opt_in(tmp_path,monkeypatch):
     monkeypatch.delenv("STAR_AGENT_STARTUP_PROBE",raising=False)
