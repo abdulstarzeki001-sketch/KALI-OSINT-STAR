@@ -49,3 +49,11 @@
  .star-terminal-foot{font-size:9px}
 }
 @media(max-width:360px){.star-terminal-toolbar button span{font-size:8px}.star-terminal-brand small{display:none}}
+
+/* Mobile shell keys are sent only after the authenticated WebSocket is ready. */
+.star-terminal-mobile-keys{display:none;flex:none;gap:5px;padding:6px;border-bottom:1px solid #28433f;background:#0a2430;overflow-x:auto}
+.star-terminal-mobile-keys button{flex:1;min-width:40px;min-height:38px;border:1px solid #31665d;border-radius:8px;background:#143c42;color:#c0f6e7;font-family:ui-monospace,monospace}
+.star-terminal-mobile-keys button:disabled{opacity:.4}.star-terminal-presets{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:7px 9px;background:#0a212b;border-top:1px solid #28433f}
+.star-terminal-presets span{color:#96b9b2;font-size:11px;flex-basis:100%}.star-terminal-presets button{border:1px solid #36665e;border-radius:7px;padding:6px 9px;background:#143b3d;color:#cef9eb;font-size:12px}
+.star-terminal-presets button:disabled{opacity:.45}
+@media(max-width:900px){.star-terminal-mobile-keys{display:flex;touch-action:pan-x}}

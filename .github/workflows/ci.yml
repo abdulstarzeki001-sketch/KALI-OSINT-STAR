@@ -22,6 +22,7 @@ jobs:
       - run: npm run test:markdown
       - run: npm run test:ai-core
       - run: npm run test:terminal
+      - run: node --test tests/terminal-mobile-ui.test.mjs
       - run: node --test tests/theme-navigation.test.mjs
       - run: node --test tests/star-os.test.mjs
       - run: node --test tests/agent-workbench-ui.test.mjs
