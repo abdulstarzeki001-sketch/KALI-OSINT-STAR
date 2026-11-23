@@ -4,6 +4,7 @@ import {PRIVATE_MODEL,requestPrivateCompletion} from './railway-gateway.js';
 // Cloudflare Access authenticates the caller. STAR_AI is a private service
 // binding: no API key, model credential, or direct Worker URL reaches the browser.
 const HOST='kali-osint-star.pages.dev';
+const AUTO_MODEL='star-ai-auto';
 const MODES=new Set(['general','code','security','agent']);
 const HEADERS={'cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer','x-frame-options':'DENY'};
 function json(value,status=200){
@@ -45,7 +46,7 @@ export async function handleChatPost({request,env},fetchUpstream=globalThis.fetc
  if(!data||!Array.isArray(data.messages)||data.messages.length<1||data.messages.length>24||
     !MODES.has(data.mode)||typeof data.stream!=='boolean')
   return json({error:'Invalid conversation or mode'},422);
- if(data.model!==undefined&&data.model!==PRIVATE_MODEL&&data.model!=='llama-cloudflare')
+ if(data.model!==undefined&&data.model!==PRIVATE_MODEL&&data.model!=='llama-cloudflare'&&data.model!==AUTO_MODEL)
   return json({error:'Invalid model'},422);
  let total=0;
  for(const message of data.messages){
@@ -64,8 +65,20 @@ export async function handleChatPost({request,env},fetchUpstream=globalThis.fetc
   mode:data.mode,stream:data.stream,temperature:data.temperature??0.5
  };
  try{
+
   if(data.model===PRIVATE_MODEL)return await railwayChat(request,env,body,fetchUpstream);
-  if(!env.STAR_AI)return json({error:'Private AI service binding unavailable'},503);
+  if(data.model===AUTO_MODEL){
+    // The user explicitly chose failover; do not silently transfer a private-only
+    // conversation to another provider. Only fail over on provider unavailability.
+    let privateReply;
+    try{privateReply=await railwayChat(request,env,body,fetchUpstream);}catch{privateReply=null;}
+    if(privateReply?.ok){
+      privateReply.headers.set('x-star-used-model',PRIVATE_MODEL);
+      return privateReply;
+    }
+    if(privateReply&&![429,503].includes(privateReply.status))return privateReply;
+  }
+  if(!env.STAR_AI)return json({error:'Cloudflare AI service binding unavailable'},503);
   const result=await env.STAR_AI.fetch('https://star-ai-service.internal/chat',{
    method:'POST',headers:{'content-type':'application/json','accept':data.stream?'text/event-stream':'application/json'},
    body:JSON.stringify(body)
@@ -74,7 +87,8 @@ export async function handleChatPost({request,env},fetchUpstream=globalThis.fetc
   const safeType=result.ok && data.stream && ct.includes('text/event-stream')
    ?'text/event-stream; charset=utf-8':'application/json; charset=utf-8';
   if(result.ok&&data.stream&&!ct.includes('text/event-stream'))return json({error:'AI streaming backend is not available'},503);
-  return new Response(result.body,{status:result.status,headers:{...HEADERS,'content-type':safeType,...(safeType.startsWith('text/event-stream')?{'x-accel-buffering':'no'}:{})}});
+  return new Response(result.body,{status:result.status,headers:{...HEADERS,'content-type':safeType,
+    'x-star-used-model':'llama-cloudflare',...(safeType.startsWith('text/event-stream')?{'x-accel-buffering':'no'}:{})}});
  }catch{return json({error:'AI inference gateway unavailable'},503);}
 }
 export async function onRequestPost(context){return handleChatPost(context);}
