@@ -24,6 +24,7 @@ jobs:
       - run: npm run test:terminal
       - run: node --test tests/terminal-mobile-ui.test.mjs
       - run: node --test tests/cyber-findings-ui.test.mjs
+      - run: node --test tests/auto-model-routing.test.mjs
       - run: node --test tests/theme-navigation.test.mjs
       - run: node --test tests/star-os.test.mjs
       - run: node --test tests/agent-workbench-ui.test.mjs
