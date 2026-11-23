@@ -59,6 +59,20 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: sh -n start.sh
       - run: npm test
+      - name: Build real Cyber Gateway Docker image and verify startup
+        run: |
+          docker build -t star-cyber-gateway-ci .
+          docker run -d --rm --name star-cyber-gateway-ci -p 127.0.0.1:18080:8080 star-cyber-gateway-ci
+          trap 'docker logs star-cyber-gateway-ci; docker rm -f star-cyber-gateway-ci || true' EXIT
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/healthz | grep -q '"status":"ok"'; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          [ "$ready" -eq 1 ] || exit 1
 
   agent:
     runs-on: ubuntu-latest
