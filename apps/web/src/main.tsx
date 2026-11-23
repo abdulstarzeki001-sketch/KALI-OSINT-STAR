@@ -9,6 +9,7 @@ import './github-unified.css';
 import {OperationsPanel} from './OperationsPanel';
 // Defer the Markdown renderer to the STAR AI screen.
 const StarAIPanel = React.lazy(() => import('./StarAIPanel'));
+const StarOSPanel = React.lazy(() => import('./StarOSPanel'));
 const AgentChatPanel = React.lazy(() => import('./AgentChatPanel'));
 const AgentRunnerPanel = React.lazy(() => import('./AgentRunnerPanel'));
 const CyberAIPanel = React.lazy(() => import('./CyberAIPanel'));
@@ -18,10 +19,11 @@ const ToolOpsController = React.lazy(() => import('./ToolOpsController'));
 import type {TrainingSummary} from './TrainingPanel';
 
 gsap.registerPlugin(useGSAP);
-type Page = 'dashboard'|'tools'|'platforms'|'labs'|'workflows'|'roadmap'|'reports'|'operations'|'terminal'|'ai'|'agent'|'runtime'|'cyber'|'settings';
+type Page = 'os'|'dashboard'|'tools'|'platforms'|'labs'|'workflows'|'roadmap'|'reports'|'operations'|'terminal'|'ai'|'agent'|'runtime'|'cyber'|'settings';
 type Tool = {name:string, group:string, desc:string, repo:string, command:string};
 type Lab = {id:number,platform:string,target:string,title:string,status:'جديد'|'قيد العمل'|'مكتمل'};
 const links: {id:Page,label:string,ico:string}[] = [
+{id:'os',label:'STAR AI OS',ico:'✦'},
 {id:'dashboard',label:'نظرة عامة',ico:'▦'},{id:'tools',label:'مكتبة الأدوات',ico:'◈'},
 {id:'platforms',label:'منصات التدريب',ico:'⌖'},{id:'labs',label:'المختبرات',ico:'⌬'},
 {id:'workflows',label:'مسارات العمل',ico:'↬'},{id:'reports',label:'التقارير',ico:'▤'},
@@ -130,9 +132,9 @@ function App(){
     <span className="brand-type"><strong>STAR<span> / </span>CYBER</strong><small>RANGE OPERATIONS</small></span>
   </button>
   <div className="section-label">WORKSPACE <span>01</span></div>
-  <nav aria-label="الصفحات الرئيسية">{links.slice(0,5).map(x=><button key={x.id} type="button" className={'nav '+(page===x.id?'active':'')} aria-current={page===x.id?'page':undefined} onClick={()=>{navigate(x.id);setMenu(false);window.scrollTo({top:0,behavior:'smooth'})}}><span className="navico" aria-hidden="true">{x.ico}</span><span>{x.label}</span>{x.id==='tools'&&<span className="nav-count">15</span>}{page===x.id&&<span className="nav-active-dot" aria-hidden="true"/>}</button>)}</nav>
+  <nav aria-label="الصفحات الرئيسية">{links.slice(0,6).map(x=><button key={x.id} type="button" className={'nav '+(page===x.id?'active':'')} aria-current={page===x.id?'page':undefined} onClick={()=>{navigate(x.id);setMenu(false);window.scrollTo({top:0,behavior:'smooth'})}}><span className="navico" aria-hidden="true">{x.ico}</span><span>{x.label}</span>{x.id==='tools'&&<span className="nav-count">15</span>}{page===x.id&&<span className="nav-active-dot" aria-hidden="true"/>}</button>)}</nav>
   <div className="section-label section-label-secondary">OPERATIONS</div>
-  <nav aria-label="الأدوات والخدمات السحابية">{links.slice(5).map(x=><button key={x.id} type="button" className={'nav '+(page===x.id?'active':'')} aria-current={page===x.id?'page':undefined} onClick={()=>{navigate(x.id);setMenu(false);window.scrollTo({top:0,behavior:'smooth'})}}><span className="navico" aria-hidden="true">{x.ico}</span><span>{x.label}</span>{page===x.id&&<span className="nav-active-dot" aria-hidden="true"/>}</button>)}</nav>
+  <nav aria-label="الأدوات والخدمات السحابية">{links.slice(6).map(x=><button key={x.id} type="button" className={'nav '+(page===x.id?'active':'')} aria-current={page===x.id?'page':undefined} onClick={()=>{navigate(x.id);setMenu(false);window.scrollTo({top:0,behavior:'smooth'})}}><span className="navico" aria-hidden="true">{x.ico}</span><span>{x.label}</span>{page===x.id&&<span className="nav-active-dot" aria-hidden="true"/>}</button>)}</nav>
   <div className="sidebar-bottom">
     <div className="side-promo"><span className="side-promo-tag">✧ LEARNING PATH</span><strong>رحلتك الأمنية تبدأ هنا.</strong><p>ثمانية أسابيع من التدريب المتحقق منه عبر Railway.</p><button type="button" onClick={()=>{navigate('roadmap');setMenu(false)}}>ابدأ التدريب ←</button></div>
     <div className="runtime"><span className={'dot '+(api==='online'?'live':'')}/><div><strong>{api==='online'?'API متصل':'مساحة عمل محمية'}</strong><small>الترمنال السحابي متاح من تبويبه بعد المصادقة</small></div></div>
@@ -149,6 +151,7 @@ function App(){
   </div>
  </header>
  <main>
+ {page==='os'&&<React.Suspense fallback={<div role="status" className="report-panel">جارٍ تحميل STAR AI OS...</div>}><StarOSPanel navigate={navigate}/></React.Suspense>}
  {page==='dashboard'&&<>
  <div className="page-meta page-animate"><span>— SECURITY TRAINING OPERATIONS</span><span>2026 — CYBER RANGE</span></div>
  <div className="welcome-line page-animate"><div><h1>مركز العمليات <span>السيبرانية<span className="h1-period">.</span></span></h1><p>كل أدواتك. كل مختبراتك. مسار واحد نحو احتراف الأمن السيبراني.</p></div><span className="training-pill">● SECURE WORKSPACE</span></div>
@@ -233,7 +236,7 @@ function App(){
   {page==='settings'&&<><div className="page-title page-animate"><span className="eyebrow">SYSTEM SETTINGS</span><h1>إعدادات مساحة العمل</h1><p>المختبرات والمفضلة محفوظة في المتصفح؛ أما نتائج التدريب المصححة فتحفظ على Railway وتُقرأ عند تسجيل الدخول.</p></div><div className="settings-panel page-animate"><div><strong>حالة API المحلية</strong><p>{api==='online'?'الاتصال بخادم FastAPI ناجح':'لم يتصل المتصفح بخادم FastAPI'}</p></div><div><strong>STAR Terminal</strong><p>ترمنال حقيقي داخل Railway، يتطلب Cloudflare Access والضغط على اتصال. نتائج التمارين تُصحّح في الخادم.</p></div><div><strong>حفظ البيانات</strong><p>localStorage داخل المتصفح الحالي</p></div><button className="danger-action" onClick={()=>{if(confirm('حذف المختبرات والمفضلة المحلية فقط؟ نتائج التدريب الموثقة في Railway لن تُحذف.')){setLabs([]);setFavorites([]);show('تم مسح البيانات المحلية فقط')}}}>مسح البيانات المحلية</button></div></>}
  </main><footer>© KALI-OSINT-STAR · AUTHORIZED LABS ONLY · BUILT FOR DEFENSIVE RESEARCH</footer></div>
  {menu&&<button type="button" className="sidebar-backdrop" aria-label="إغلاق القائمة" onClick={()=>setMenu(false)}/>}
- <div className="mobile-nav" aria-label="الأقسام السريعة على الآيفون">{links.filter(x=>['dashboard','tools','terminal','operations','agent'].includes(x.id)).map(x=><button key={x.id} className={page===x.id?'selected':''} onClick={()=>navigate(x.id)}><span>{x.ico}</span><small>{x.label}</small></button>)}</div>
+ <div className="mobile-nav" aria-label="الأقسام السريعة على الآيفون">{links.filter(x=>['os','dashboard','tools','terminal','operations','agent'].includes(x.id)).map(x=><button key={x.id} className={page===x.id?'selected':''} onClick={()=>navigate(x.id)}><span>{x.ico}</span><small>{x.label}</small></button>)}</div>
  {modal&&<div className="modal-backdrop" onMouseDown={()=>setModal(null)}><div className="modal" role="dialog" aria-modal="true" onMouseDown={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setModal(null)}>✕</button><span className="eyebrow">{modal.group} / TOOL DETAIL</span><h2>{modal.name}</h2><p>{modal.desc}</p><div className="command"><code>{modal.command}</code><button onClick={()=>copy(modal.command)}>نسخ</button></div><small>أمر مرجعي فقط: يتطلب تثبيت الأداة وبيئة مصرح بها.</small><a href={modal.repo} target="_blank" rel="noreferrer" className="modal-link">فتح المستودع الرسمي ↗</a></div></div>}
  {message&&<div className="toast" role="status">{message}</div>}
  </div></ReactLenis>;
