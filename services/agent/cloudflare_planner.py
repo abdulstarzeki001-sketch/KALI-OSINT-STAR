@@ -45,14 +45,25 @@ def parse_action(answer:str):
     return {'content':'Model did not return an approved tool action; no tools executed. Output: '+answer[:3000]}
 
 class CloudflarePlanner:
+    # True for the legacy Access JWT transport. The keyed model route
+    # is server-to-server and never receives the owner's browser credential.
     requires_owner_access=True
-    def __init__(self,url:str,*,transport=None):
+    def __init__(self,url:str,*,transport=None,model_key:str=''):
         parsed=urlparse(url)
-        if (parsed.scheme!='https' or parsed.hostname!='kali-osint-star.pages.dev' or
-            parsed.path!='/api/agent/inference' or parsed.query or parsed.fragment or
-            parsed.username or parsed.password or parsed.port):
-            raise ValueError('Model endpoint must be the pinned private Cloudflare route')
+        legacy=(parsed.hostname=='kali-osint-star.pages.dev' and
+                parsed.path=='/api/agent/inference')
+        gateway=(parsed.hostname=='star-ai-minis-v2.abdulstarzeki001.workers.dev' and
+                 parsed.path=='/v1/chat/completions')
+        if (parsed.scheme!='https' or not (legacy or gateway) or parsed.query or parsed.fragment
+            or parsed.username or parsed.password or parsed.port):
+            raise ValueError('Model endpoint must be a pinned STAR AI HTTPS route')
+        if gateway and (not isinstance(model_key,str) or len(model_key)<32):
+            raise ValueError('STAR_AGENT_MODEL_KEY (32+ chars) required for model gateway')
+        if legacy and model_key:
+            raise ValueError('Agent model key is only valid for the pinned gateway')
         self.url=url;self.transport=transport
+        self.model_key=model_key if gateway else ''
+        self.requires_owner_access=not gateway
 
     def build_prompt(self,messages:list[dict]):
         history=[]
@@ -74,23 +85,33 @@ class CloudflarePlanner:
         return preface+'\n[UNTRUSTED HISTORY]\n'+content+'\n[/UNTRUSTED HISTORY]'
 
     async def complete(self,messages:list[dict],access_token:str|None=None):
-        if not isinstance(access_token,str) or not access_token or len(access_token)>8192:
-            raise ValueError('Active Cloudflare Access session required for model inference')
-        body={'prompt':self.build_prompt(messages)}
-        # Linked App Token: Access accepts the original owner JWT on the
-        # inference app and exchanges it for a different audience-bound JWT.
-        headers={'Cf-Access-Token':access_token,
-                 'content-type':'application/json','accept':'application/json'}
+        if self.model_key:
+            # An isolated model API key is used only in this backend request.
+            # Never put it in model context, audit logs or browser responses.
+            payload={'model':'star-ai-pro',
+                     'messages':[{'role':'user','content':self.build_prompt(messages)}],
+                     'temperature':0.1,'max_tokens':850,'stream':False}
+            headers={'Authorization':'Bearer '+self.model_key,
+                     'content-type':'application/json','accept':'application/json'}
+        else:
+            if not isinstance(access_token,str) or not access_token or len(access_token)>8192:
+                raise ValueError('Active Cloudflare Access session required for model inference')
+            payload={'prompt':self.build_prompt(messages)}
+            headers={'Cf-Access-Token':access_token,
+                     'content-type':'application/json','accept':'application/json'}
         async with httpx.AsyncClient(timeout=80,follow_redirects=False,trust_env=False,
             transport=self.transport) as client:
-            response=await client.post(self.url,headers=headers,json=body)
+            response=await client.post(self.url,headers=headers,json=payload)
             if response.is_redirect or response.status_code in (401,403):
-                raise ValueError('Cloudflare Access rejected the agent model session')
+                raise ValueError('STAR AI model gateway rejected authentication')
             if response.status_code!=200:
                 raise ValueError('Cloudflare model unavailable (HTTP '+str(response.status_code)+')')
-            try:answer=response.json().get('reply')
-            except (ValueError,AttributeError):
-                raise ValueError('Cloudflare model returned a non-JSON response')
+            try:
+                data=response.json()
+                answer=(data['choices'][0]['message']['content']
+                        if self.model_key else data.get('reply'))
+            except (ValueError,AttributeError,KeyError,IndexError,TypeError):
+                raise ValueError('Cloudflare model returned an invalid JSON response')
         if not isinstance(answer,str) or not answer.strip():
             raise ValueError('Cloudflare model returned no usable reply')
         return parse_action(answer)
