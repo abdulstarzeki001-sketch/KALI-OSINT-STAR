@@ -24,6 +24,7 @@ jobs:
       - run: npm run test:terminal
       - run: node --test tests/theme-navigation.test.mjs
       - run: node --test tests/star-os.test.mjs
+      - run: node --test tests/agent-workbench-ui.test.mjs
       - run: npm run typecheck
       - run: npm run build
       - run: npm run test:bundle
