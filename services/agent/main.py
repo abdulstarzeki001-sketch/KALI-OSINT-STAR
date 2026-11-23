@@ -31,10 +31,12 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
                           os.getenv('STAR_AGENT_BROWSER_HOSTS','').split(','))
         backend=os.getenv('STAR_MODEL_BACKEND','cpu').strip().lower()
         if backend=='cloudflare':
-            if not access_verifier.enabled:
-                raise RuntimeError('Cloudflare Access verification must be configured for cloud mode')
+            model_key=os.getenv('STAR_AGENT_MODEL_KEY','')
+            if not access_verifier.enabled and len(secret)<32:
+                raise RuntimeError('Configure Cloudflare Access or a strong owner API key')
             model=CloudflarePlanner(os.getenv('STAR_CLOUDFLARE_MODEL_URL',
-                'https://kali-osint-star.pages.dev/api/agent/inference'))
+                'https://kali-osint-star.pages.dev/api/agent/inference'),
+                model_key=model_key)
         elif backend=='cpu':
             cpu_key=os.getenv('STAR_CPU_API_KEY','')
             if len(cpu_key)<32:raise RuntimeError('STAR_CPU_API_KEY is required in CPU model mode')
@@ -94,7 +96,7 @@ def create_app(engine:Engine|None=None,secret:str|None=None)->FastAPI:
     async def health():
         return {'ok':True,'service':'star-agent-cpu','tool_mode':'approval-gated',
                 'model_endpoint_configured':True,'model_backend':(
-                  'cloudflare' if getattr(engine.model,'requires_owner_access',False) else 'cpu'),
+                  'cloudflare' if isinstance(engine.model,CloudflarePlanner) else 'cpu'),
                 'live_inference_tested':False,'allowed_host_count':len(engine.executor.hosts)}
     @app.post('/api/tasks',status_code=202)
     async def submit(req:Request):
