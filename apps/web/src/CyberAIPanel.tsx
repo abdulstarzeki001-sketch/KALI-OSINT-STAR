@@ -22,6 +22,9 @@ const KINDS:{id:Kind;label:string}[]=[
 async function invoke(action:string,payload:Record<string,unknown>={}) {
   const res=await fetch('/api/ai/cyber',{
     method:'POST',credentials:'same-origin',cache:'no-store',
+    // Security review can depend on a temporarily unavailable GPU provider.
+    // Fail with an actionable error rather than leaving the iPhone UI pending indefinitely.
+    ...(action==='review'?{signal:AbortSignal.timeout(75000)}:{}),
     headers:{'content-type':'application/json'},
     body:JSON.stringify({action,...payload})
   });
@@ -109,7 +112,14 @@ export default function CyberAIPanel(){
       const data=await invoke(action,{kind,artifact, ...(action==='review'?{model,question}:{})});
       if(action==='audit')setAudit(data as unknown as Audit);
       else {const result=data as unknown as Review;setReview(result);setAudit(result.local_audit);}
-    }catch(err){setError(err instanceof Error?err.message:'فشل طلب التدقيق');}
+    }catch(err){
+      const detail=err instanceof Error?err.message:'فشل طلب التدقيق';
+      const providerProblem=action==='review'&&model!=='llama-cloudflare'&&
+        /HTTP (?:429|502|503|504)|provider_|unavailable|timeout|AbortError|TimeoutError|network/i.test(detail);
+      setError(providerProblem?
+        detail+' — تعذرت مراجعة Qwen السحابية. الفحص النصي المحلي مستقل ويمكن تشغيله الآن. إذا رغبت، اختر llama-cloudflare يدوياً وأعد المحاولة؛ ستُرسل الشيفرة بعد تنقيح الأنماط المعروفة من الأسرار إلى ذلك المزود.':
+        detail);
+    }
     finally{setRunning(null);}
   }
   async function readSources(input:FileList|null){
