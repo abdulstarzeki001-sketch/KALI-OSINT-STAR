@@ -199,3 +199,42 @@ test('authenticated model catalog reports tailnet auth failure without URLs, key
   const safe=await (await other(request('/v1/models',undefined,TOKEN,'GET'))).json();
   assert.equal(safe.tailnet_status,'unknown');
 });
+
+
+test('returns 504 for a timed-out provider without leaking network details',async()=>{
+  const handler=createGateway({env:ENV,fetchImpl:async()=>{
+    const error=new Error('private host details should not leak');
+    error.name='TimeoutError';
+    throw error;
+  }});
+  const response=await handler(request('/v1/chat/completions',{
+    model:'qwen-coder',messages:[{role:'user',content:'Summarize code review findings'}]
+  }));
+  assert.equal(response.status,504);
+  const body=await response.json();
+  assert.equal(body.error.code,'provider_timeout');
+  assert.equal(JSON.stringify(body).includes('private host details'),false);
+});
+
+test('distinguishes upstream network failure from timeout',async()=>{
+  const handler=createGateway({env:ENV,fetchImpl:async()=>{throw new TypeError('network unreachable')}});
+  const response=await handler(request('/v1/chat/completions',{
+    model:'qwen-coder',messages:[{role:'user',content:'Hello'}]
+  }));
+  assert.equal(response.status,502);
+  assert.equal((await response.json()).error.code,'provider_unreachable');
+});
+
+test('passes through SSE responses for clients with streaming enabled',async()=>{
+  const event='data: {"choices":[{"delta":{"content":"hello"}}]}\\n\\n';
+  const handler=createGateway({env:ENV,fetchImpl:async(_url,options)=>{
+    assert.equal(JSON.parse(options.body).stream,true);
+    return new Response(event,{headers:{'content-type':'text/event-stream'}});
+  }});
+  const response=await handler(request('/v1/chat/completions',{
+    model:'qwen-coder',stream:true,max_tokens:128,messages:[{role:'user',content:'Hello'}]
+  }));
+  assert.equal(response.status,200);
+  assert.match(response.headers.get('content-type'),/text\\/event-stream/);
+  assert.equal(await response.text(),event);
+});
