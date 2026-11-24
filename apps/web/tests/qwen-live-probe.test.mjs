@@ -4,10 +4,10 @@ import {readFileSync} from 'node:fs';
 import {handleCyberPost} from '../functions/api/ai/cyber.js';
 import {ownerToken,resetCerts} from './access-test-keys.mjs';
 
-const URL='https://kali-osint-star.pages.dev/api/ai/cyber';
+const ENDPOINT='https://kali-osint-star.pages.dev/api/ai/cyber';
 const ENV={STAR_CYBER_GATEWAY_URL:'https://star-ai-cyber-gateway-production.up.railway.app/',
   STAR_CYBER_GATEWAY_TOKEN:'test-token-secure-and-longer-than-32-characters'};
-const request=(jwt=ownerToken)=>new Request(URL,{method:'POST',headers:{
+const request=(jwt=ownerToken)=>new Request(ENDPOINT,{method:'POST',headers:{
   'content-type':'application/json','Cf-Access-Jwt-Assertion':jwt
 },body:JSON.stringify({action:'probe',model:'attacker-host',
   messages:[{role:'user',content:'do not send to provider'}],
