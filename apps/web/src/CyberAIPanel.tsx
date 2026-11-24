@@ -25,6 +25,7 @@ async function invoke(action:string,payload:Record<string,unknown>={}) {
     // Security review can depend on a temporarily unavailable GPU provider.
     // Fail with an actionable error rather than leaving the iPhone UI pending indefinitely.
     ...(action==='review'?{signal:AbortSignal.timeout(75000)}:{}),
+    ...(action==='probe'?{signal:AbortSignal.timeout(75000)}:{}),
     headers:{'content-type':'application/json'},
     body:JSON.stringify({action,...payload})
   });
@@ -76,6 +77,9 @@ export default function CyberAIPanel(){
   const [review,setReview]=useState<Review|null>(null);
   const [error,setError]=useState('');
   const [availability,setAvailability]=useState('جاري فحص الاتصال المحمي...');
+  const [probeRunning,setProbeRunning]=useState(false);
+  const [probeResult,setProbeResult]=useState<'idle'|'ok'|'failed'>('idle');
+  const [probeDetails,setProbeDetails]=useState('');
   const [running,setRunning]=useState<'audit'|'review'|null>(null);
   const [filePath,setFilePath]=useState('snippet.js');
   const [uploadedFiles,setUploadedFiles]=useState<SourceFile[]>([]);
@@ -110,6 +114,24 @@ export default function CyberAIPanel(){
     }).catch(err=>{if(alive)setAvailability('خدمة Gateway غير مهيأة أو لا يمكن الوصول إليها: '+String(err.message));});
     return ()=>{alive=false;};
   },[]);
+  async function runQwenProbe(){
+    if(probeRunning)return;
+    setProbeRunning(true);setProbeResult('idle');
+    setProbeDetails('جاري إرسال طلب تجريبي محمي إلى Qwen عبر Railway وTailscale...');
+    try{
+      const result=await invoke('probe');
+      if(result.status!=='ok'||result.model!=='qwen3-coder-vast')
+        throw Error('لم يستلم Gateway استجابة مؤكدة من Qwen');
+      const latency=typeof result.latency_ms==='number'&&Number.isFinite(result.latency_ms)
+        ?' خلال '+Math.ceil(result.latency_ms/1000)+' ثانية':'';
+      setProbeResult('ok');
+      setProbeDetails('تم التحقق: Qwen3-Coder أعاد استجابة حقيقية'+latency+'.');
+    }catch(e){
+      setProbeResult('failed');
+      const detail=e instanceof Error?e.message:'انتهى اختبار الاتصال دون استجابة';
+      setProbeDetails('فشل الاستدلال الفعلي: '+detail+'. تحقق من جلسة Cloudflare Access واتصال Ollama.');
+    }finally{setProbeRunning(false);}
+  }
   async function execute(action:'audit'|'review',event:FormEvent){
     event.preventDefault();
     if(running)return;
@@ -207,6 +229,20 @@ export default function CyberAIPanel(){
       <p>مراجعة أكواد وتكوينات وسجلات وأنظمة حماية بناءً على الأدلة التي تزودنا بها، بدون إجراء مسح على أي هدف أو تشغيل أوامر غير مصرح بها.</p>
     </header>
     <div className="cyber-notice" role="status">{availability}</div>
+    <section className="cyber-pane cyber-probe" aria-label="التحقق من استدلال Qwen">
+      <div>
+        <h2>اختبار استجابة Qwen الحقيقية</h2>
+        <p>تجربة طلب نصي قصير من واجهة الموقع حتى Ollama، بدون رفع ملفاتك أو عرض مفتاح API. ظهور النموذج في القائمة وحده لا يثبت عمله.</p>
+      </div>
+      <button type="button" className="cyber-secondary-btn" onClick={()=>void runQwenProbe()}
+        disabled={probeRunning||!models.includes('qwen3-coder-vast')}>
+        {probeRunning?'جارٍ اختبار Qwen...':'اختبر Qwen الآن'}
+      </button>
+      {probeDetails&&<p role="status" aria-live="polite"
+        className={probeResult==='failed'?'cyber-error':probeResult==='ok'?'cyber-probe-success':'cyber-probe-status'}>
+        {probeDetails}
+      </p>}
+    </section>
 
     <section className="cyber-deep cyber-pane" aria-label="فحص أمني عميق متعدد الملفات">
       <div className="cyber-deep-head">
