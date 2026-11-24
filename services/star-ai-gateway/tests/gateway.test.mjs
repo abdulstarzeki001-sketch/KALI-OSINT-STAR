@@ -226,7 +226,7 @@ test('distinguishes upstream network failure from timeout',async()=>{
 });
 
 test('passes through SSE responses for clients with streaming enabled',async()=>{
-  const event='data: {"choices":[{"delta":{"content":"hello"}}]}\\n\\n';
+  const event='data: {"choices":[{"delta":{"content":"hello"}}]}\n\n';
   const handler=createGateway({env:ENV,fetchImpl:async(_url,options)=>{
     assert.equal(JSON.parse(options.body).stream,true);
     return new Response(event,{headers:{'content-type':'text/event-stream'}});
@@ -235,6 +235,6 @@ test('passes through SSE responses for clients with streaming enabled',async()=>
     model:'qwen-coder',stream:true,max_tokens:128,messages:[{role:'user',content:'Hello'}]
   }));
   assert.equal(response.status,200);
-  assert.match(response.headers.get('content-type'),/text\\/event-stream/);
+  assert.ok(response.headers.get('content-type').startsWith('text/event-stream'));
   assert.equal(await response.text(),event);
 });
