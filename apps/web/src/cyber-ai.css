@@ -50,3 +50,14 @@
 .cyber-findings-controls input,.cyber-findings-controls select{min-height:40px;min-width:0;width:100%;padding:8px 10px;color:#eaf7f8;background:#0c1a2d;border:1px solid #426779;border-radius:8px;font:inherit}
 .cyber-findings-controls>span{color:#89c9b9;font-size:12px;padding:9px}
 @media(max-width:600px){.cyber-findings-controls{flex-direction:column;align-items:stretch}.cyber-findings-controls label{min-width:0}}
+
+/* Authenticated, on-demand inference check: model list alone is not a health signal. */
+.cyber-probe{display:flex;flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.cyber-probe>div{flex:1;min-width:220px}
+.cyber-probe h2{margin:0 0 6px}
+.cyber-probe p{color:#b8c7e1;line-height:1.55;font-size:.88rem;margin:0}
+.cyber-probe>.cyber-secondary-btn{flex-shrink:0}
+.cyber-probe .cyber-probe-success{color:#a6e8c7;flex-basis:100%}
+.cyber-probe .cyber-probe-status{color:#c6d5ee;flex-basis:100%}
+.cyber-probe .cyber-error{flex-basis:100%}
+@media(max-width:600px){.cyber-probe{flex-direction:column;align-items:stretch}.cyber-probe>div{min-width:0}.cyber-probe>.cyber-secondary-btn{width:100%}}
