@@ -42,7 +42,8 @@ const ERROR_HINTS={
  unsupported_chat_features:'This gateway supports text chat only; disable client tools, agent execution and non-text message roles.',
  invalid_max_tokens:'Use max_tokens or max_completion_tokens between 64 and 4096; do not send conflicting values.',
  body_too_large:'Request exceeds the 70000-byte limit. Start a fresh text chat.',
- provider_unreachable:'Upstream connection failed or exceeded the 65-second timeout.',
+ provider_unreachable:'Upstream connection failed. Check private-network connectivity and provider readiness.',
+ provider_timeout:'Upstream did not respond within 100 seconds. Try stream=true, reduce the request size, or check provider load.',
  invalid_provider_reply:'Provider returned no usable final answer.',
  provider_reasoning_only:'The model exhausted its generation budget without a final answer. Try a short prompt with a bounded larger output budget.',
  invalid_provider_stream:'Provider did not return a valid event stream. Test non-streaming chat.',
@@ -173,10 +174,13 @@ async function invokeProvider(model,body,fetchImpl) {
       method:'POST',
       headers:{'content-type':'application/json','authorization':'Bearer '+model.key},
       body:JSON.stringify(body),
-      signal:AbortSignal.timeout(65000),
+      signal:AbortSignal.timeout(100_000),
       redirect:'error'
     });
-  }catch{return fail(502,'provider_unreachable');}
+  }catch(error){
+    const timedOut=error?.name==='TimeoutError'||error?.name==='AbortError';
+    return fail(timedOut?504:502,timedOut?'provider_timeout':'provider_unreachable');
+  }
   if(!upstream.ok)return fail(upstream.status===429?429:upstream.status===401?503:502,'provider_unavailable');
   if(body.stream) {
     if(!upstream.body||!upstream.headers.get('content-type')?.includes('text/event-stream'))return fail(502,'invalid_provider_stream');
