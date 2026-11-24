@@ -33,6 +33,14 @@ export async function handleCyberPost({request,env},fetchUpstream=globalThis.fet
   switch(data.action) {
     case 'models':
       path='/v1/models';method='GET';break;
+    case 'probe':
+      // An explicit, Access-protected inference check: fixed text, fixed model,
+      // and no caller-provided source files or prompts reach the GPU.
+      path='/v1/chat/completions';
+      payload={model:'qwen3-coder-vast',mode:'general',stream:false,
+        max_tokens:128,temperature:0,
+        messages:[{role:'user',content:'Reply with STAR_AI_READY in one short sentence.'}]};
+      break;
     case 'audit':
       if(!KINDS.has(data.kind)||typeof data.artifact!=='string'||data.artifact.length<3||data.artifact.length>16000)
         return json({error:'Invalid audit'},422);
@@ -97,17 +105,31 @@ export async function handleCyberPost({request,env},fetchUpstream=globalThis.fet
   }
   if(!gatewayReady)return json({error:'Railway Cyber Gateway is not configured'},503);
   try{
+    const startedAt=Date.now();
     const result=await fetchUpstream(backend+path,{
       method,headers:{
         'authorization':railwayGatewayAuth(request,env),
         ...(payload?{'content-type':'application/json'}:{})
       },
       ...(payload?{body:JSON.stringify(payload)}:{}),
+      ...(data.action==='probe'?{signal:AbortSignal.timeout(70000)}:{}),
       redirect:'manual'
     });
     if(result.status>=300&&result.status<400)return json({error:'Backend redirects are not allowed'},502);
     const contentType=result.headers.get('content-type')||'';
     if(!contentType.includes('application/json'))return json({error:'Backend did not return JSON'},502);
+    if(data.action==='probe'){
+      if(!result.ok)return json({error:result.status===429?
+        'Qwen inference rate limit reached':'Qwen inference unavailable'},
+        result.status===429?429:503);
+      let modelResult;
+      try{modelResult=await result.json();}catch{return json({error:'Invalid Qwen reply'},502);}
+      const answer=modelResult?.choices?.[0]?.message?.content;
+      if(typeof answer!=='string'||!answer.trim())return json({error:'Qwen returned no final answer'},502);
+      // Do not return the text or any provider diagnostic, only proof of an actual reply.
+      return json({status:'ok',model:'qwen3-coder-vast',
+        latency_ms:Math.max(0,Date.now()-startedAt)});
+    }
     if(data.action==='models'&&env.STAR_AI){
       if(!result.ok)return json({object:'list',data:[{id:'llama-cloudflare',object:'model',owned_by:'cloudflare'}]});
       const models=await result.json();
