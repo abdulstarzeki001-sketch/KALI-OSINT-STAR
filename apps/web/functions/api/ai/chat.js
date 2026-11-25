@@ -1,5 +1,6 @@
 import {verifyAccessRequest,accessFailureStatus} from '../../../access-jwt.js';
 import {ownerKey,memoryContext,attachMemory} from '../../../durable-memory.js';
+import {readProfile,findKnowledge,profileContext} from '../../../ai-settings.js';
 import {PRIVATE_MODEL,requestPrivateCompletion} from './railway-gateway.js';
 
 // Cloudflare Access authenticates the caller. STAR_AI is a private service
@@ -70,6 +71,14 @@ export async function handleChatPost({request,env},fetchUpstream=globalThis.fetc
   if(data.memory===true){
    if(!env.STAR_MEMORY)return json({error:'Cloud memory unavailable'},503);
    body.messages=attachMemory(body.messages,await memoryContext(env.STAR_MEMORY,await ownerKey(access.identity)));
+  }
+  if(env.STAR_MEMORY){
+   const owner=await ownerKey(access.identity);
+   const profile=await readProfile(env.STAR_MEMORY,owner);
+   const rows=profile.knowledge?await findKnowledge(env.STAR_MEMORY,owner,data.messages.at(-1).content):[];
+   const context=profileContext(profile,rows);
+   // Existing providers accept only user/assistant roles; this is owner context, not a system override.
+   if(context)body.messages=attachMemory(body.messages,context.slice(0,4900));
   }
   if(data.model===PRIVATE_MODEL)return await railwayChat(request,env,body,fetchUpstream);
   if(data.model===AUTO_MODEL){

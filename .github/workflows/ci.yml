@@ -20,6 +20,7 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run test:cloudflare
       - run: node --test tests/durable-memory.test.mjs
+      - run: node --test tests/ai-settings.test.mjs
       - run: npm run test:markdown
       - run: npm run test:ai-core
       - run: npm run test:terminal
