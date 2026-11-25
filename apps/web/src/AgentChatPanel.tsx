@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import type {FormEvent,KeyboardEvent} from 'react';
+import DurableMemoryPanel,{memoryWrite} from './DurableMemoryPanel';
 import SafeMarkdown from './SafeMarkdown';
 import {CHAT_MODELS,AUTO_MODEL,CLOUD_MODEL,PRIVATE_MODEL} from './ai-models';
 import type {ChatModel} from './ai-models';
@@ -68,6 +69,8 @@ export default function AgentChatPanel(){
  const [rooms,setRooms]=useState<ChatRoom[]>(readRooms);
  const [activeId,setActiveId]=useState(()=>rooms[0].id);
  const [persist,setPersist]=useState(()=>{try{return localStorage.getItem(OPT_IN_KEY)==='yes';}catch{return false;}});
+ const [cloudMemory,setCloudMemory]=useState(()=>{try{return localStorage.getItem('star-cloud-memory-opt-in')==='yes';}catch{return false;}});
+ const [memoryError,setMemoryError]=useState('');
  const [draft,setDraft]=useState('');
  const [attachment,setAttachment]=useState<Attachment|null>(null);
  const [busy,setBusy]=useState(false);
@@ -143,11 +146,13 @@ export default function AgentChatPanel(){
   setDraft('');setAttachment(null);setBusy(true);setError('');
   const controller=new AbortController();abortRef.current=controller;
   let accumulated='';
+  let completed=false;
   try{
+   if(cloudMemory){setMemoryError('');try{await memoryWrite('POST',{id:user.id,kind:'chat',room:roomId,body:'أنت: '+text});}catch{setMemoryError('لم تُحفظ رسالتك سحابياً؛ تحقق من اتصال الذاكرة.');}}
    const response=await fetch('/api/ai/chat',{
     method:'POST',credentials:'same-origin',cache:'no-store',signal:controller.signal,
     headers:{'Content-Type':'application/json','Accept':'text/event-stream'},
-    body:JSON.stringify({messages:context,mode:conversationMode,model:conversationModel,stream:true,temperature:creativity})
+    body:JSON.stringify({messages:context,mode:conversationMode,model:conversationModel,stream:true,temperature:creativity,memory:cloudMemory})
    });
    if(!response.ok){
     let details:{error?:string;code?:string}={};
@@ -185,6 +190,7 @@ export default function AgentChatPanel(){
    }
    if(!done&&realProvider===PRIVATE_MODEL)throw Error('انقطع رد نموذج Vast.ai قبل أن يكتمل.');
    if(!accumulated.trim())throw Error('النموذج لم يُرجع نصاً. أعد المحاولة.');
+   completed=true;
    setConnected(true);
   }catch(err){
    const stopped=controller.signal.aborted;
@@ -192,6 +198,9 @@ export default function AgentChatPanel(){
    patchMessage(roomId,assistant.id,m=>({...m,content:accumulated||reason,error:!accumulated}));
    if(!stopped)setError(reason);
   }finally{
+   if(cloudMemory&&accumulated.trim()){
+    try{if(accumulated.length>59990)throw Error('archive limit');await memoryWrite('POST',{id:assistant.id,kind:'chat',room:roomId,body:'STAR AI: '+accumulated,partial:!completed});}catch{setMemoryError('لم يُحفظ الرد سحابياً أو تجاوز حد الأرشفة؛ صدّر المحادثة محلياً.');}
+   }
    if(abortRef.current===controller){abortRef.current=null;setBusy(false);}
   }
  }
@@ -232,6 +241,8 @@ export default function AgentChatPanel(){
     <button type="button" className="agent-primary" onClick={newChat}>＋ محادثة جديدة</button>
    </div>
   </header>
+  <DurableMemoryPanel enabled={cloudMemory} onEnabled={v=>{setCloudMemory(v);try{localStorage.setItem('star-cloud-memory-opt-in',v?'yes':'no');}catch{}}} onUse={setDraft}/>
+  {memoryError&&<p role="alert" className="agent-alert">{memoryError}</p>}
   <div className="agent-layout">
    <aside className={'agent-history '+(showHistory?'is-open':'')} aria-label="سجل المحادثات">
     <div className="agent-history-title"><strong>المحادثات</strong><span>{rooms.length} / 16</span></div>

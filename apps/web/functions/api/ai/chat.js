@@ -1,4 +1,5 @@
 import {verifyAccessRequest,accessFailureStatus} from '../../../access-jwt.js';
+import {ownerKey,memoryContext,attachMemory} from '../../../durable-memory.js';
 import {PRIVATE_MODEL,requestPrivateCompletion} from './railway-gateway.js';
 
 // Cloudflare Access authenticates the caller. STAR_AI is a private service
@@ -66,6 +67,10 @@ export async function handleChatPost({request,env},fetchUpstream=globalThis.fetc
  };
  try{
 
+  if(data.memory===true){
+   if(!env.STAR_MEMORY)return json({error:'Cloud memory unavailable'},503);
+   body.messages=attachMemory(body.messages,await memoryContext(env.STAR_MEMORY,await ownerKey(access.identity)));
+  }
   if(data.model===PRIVATE_MODEL)return await railwayChat(request,env,body,fetchUpstream);
   if(data.model===AUTO_MODEL){
     // The user explicitly chose failover; do not silently transfer a private-only
