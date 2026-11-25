@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS star_github_changes(owner TEXT NOT NULL,id TEXT NOT NULL,path TEXT NOT NULL,base_sha TEXT NOT NULL,blob_sha TEXT NOT NULL,before_text TEXT NOT NULL,after_text TEXT NOT NULL,task TEXT NOT NULL,state TEXT NOT NULL,pr INTEGER,head_sha TEXT,created INTEGER NOT NULL,PRIMARY KEY(owner,id));
