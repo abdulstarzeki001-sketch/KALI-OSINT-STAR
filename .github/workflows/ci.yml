@@ -19,6 +19,7 @@ jobs:
           node-version: '22'
       - run: npm install --no-audit --no-fund
       - run: npm run test:cloudflare
+      - run: node --test tests/durable-memory.test.mjs
       - run: npm run test:markdown
       - run: npm run test:ai-core
       - run: npm run test:terminal
