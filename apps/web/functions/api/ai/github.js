@@ -1,7 +1,7 @@
 import {verifyAccessRequest,accessFailureStatus} from '../../../access-jwt.js';
 import {ownerKey} from '../../../durable-memory.js';
 import {readProfile} from '../../../ai-settings.js';
-import {REPO,safePath,shaOK,idOK,applyEdit,encodeText,decodeText,sensitive,github,verifyChecks} from '../../../github-workspace.js';
+import {REPO,safePath,shaOK,idOK,applyEdit,encodeText,decodeText,sensitive,github,verifyChecks,tokenState,githubFailure} from '../../../github-workspace.js';
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'private, no-store','x-content-type-options':'nosniff'}});
 const pathURL=p=>p.split('/').map(encodeURIComponent).join('/');
 const publicRecord=r=>({id:r.id,path:r.path,task:r.task,before:r.before_text,after:r.after_text,state:r.state,pr:r.pr,created:r.created});
@@ -27,9 +27,29 @@ export async function handleGitHub({request,env},verify=verifyAccessRequest){
   const owner=await ownerKey(auth.identity);
   if(request.method==='GET'){
    const action=u.searchParams.get('action')||'status';
+   if(action==='diagnose'){
+    const checks={access:'ok',storage:'unknown',token:tokenState(env),repository:'not_tested',main:'not_tested',tree:'not_tested'};
+    try{await db.prepare('SELECT id FROM star_github_changes WHERE owner=? LIMIT 1').bind(owner).all();checks.storage='ok';}catch{checks.storage='error';}
+    let failure=null;
+    try{
+     const repo=await github(env,'');
+     if(repo.full_name!==REPO)throw Error('Unexpected repository');
+     checks.repository='ok';
+     const ref=await github(env,'/git/ref/heads/main');
+     if(!shaOK(ref.object?.sha))throw Error('Unexpected ref');
+     checks.main='ok';
+     const tree=await github(env,'/git/trees/'+ref.object.sha+'?recursive=1');
+     if(!Array.isArray(tree.tree))throw Error('Unexpected tree');
+     checks.tree='ok';
+    }catch(e){failure=githubFailure(e);}
+    return json({checks,ok:checks.storage==='ok'&&checks.token==='configured'&&checks.tree==='ok',failure,writeVerified:false,notice:'Read-only diagnostic. No GitHub files, branches or tokens changed.'});
+   }
    if(action==='files'){
-    const tree=await github(env,'/git/trees/main?recursive=1');
-    return json({files:(tree.tree||[]).filter(x=>x.type==='blob'&&safePath(x.path)).slice(0,300).map(x=>x.path),truncated:!!tree.truncated});
+    const ref=await github(env,'/git/ref/heads/main');
+    if(!shaOK(ref.object?.sha))return json({error:'GitHub main ref invalid',code:'MAIN_REF_INVALID'},502);
+    const tree=await github(env,'/git/trees/'+ref.object.sha+'?recursive=1');
+    if(!Array.isArray(tree.tree))return json({error:'GitHub tree response invalid',code:'TREE_INVALID'},502);
+    return json({files:tree.tree.filter(x=>x.type==='blob'&&safePath(x.path)).slice(0,300).map(x=>x.path),truncated:!!tree.truncated});
    }
    if(action==='file'){
     const p=u.searchParams.get('path');if(!safePath(p))return json({error:'Path not permitted'},422);
@@ -98,6 +118,6 @@ export async function handleGitHub({request,env},verify=verifyAccessRequest){
   if(!merged.merged)return json({error:'Merge refused by GitHub'},409);
   await db.prepare("UPDATE star_github_changes SET state='merged' WHERE owner=? AND id=?").bind(owner,row.id).run();
   return json({id:row.id,state:'merged',pr:row.pr,sha:merged.sha,notice:'Cloudflare deployment triggered by main; verify deployment separately'});
- }catch(e){const m=e instanceof Error?e.message:'';return json({error:/^GitHub HTTP \d{3}$/.test(m)?m:'GitHub operation failed; check saved state or GitHub before retrying'},503);}
+ }catch(e){return json(githubFailure(e),503);}
 }
 export const onRequest=handleGitHub;

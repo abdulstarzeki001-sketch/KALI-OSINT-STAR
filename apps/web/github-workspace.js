@@ -15,11 +15,31 @@ export function applyEdit(before,reply){
 export function encodeText(s){const bytes=new TextEncoder().encode(s);let raw='';for(const b of bytes)raw+=String.fromCharCode(b);return btoa(raw);}
 export function decodeText(s){return new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(atob(s.replace(/\s/g,'')),x=>x.charCodeAt(0)));}
 export function sensitive(s){return /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----|(?:gh[pousr]_|github_pat_|sk-(?:proj-)?)[A-Za-z0-9_-]{20,}|Authorization\s*:\s*Bearer\s+[A-Za-z0-9._~-]{24,}/i.test(s);}
-export async function github(env,path,method='GET',body,fetcher=globalThis.fetch){
- if(method!=='GET'&&!env.STAR_GITHUB_TOKEN)throw Error('GitHub write token not configured');
- const response=await fetcher('https://api.github.com/repos/'+REPO+path,{method,redirect:'error',headers:{accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'STAR-AI-Workspace',...(env.STAR_GITHUB_TOKEN?{authorization:'Bearer '+env.STAR_GITHUB_TOKEN}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
- if(!response.ok)throw Error('GitHub HTTP '+response.status);
- return response.json();
+export class GitHubError extends Error {
+ constructor(code,status=0){super(code);this.code=code;this.status=status;}
+}
+export function tokenState(env){
+ const raw=env.STAR_GITHUB_TOKEN;
+ if(typeof raw!=='string'||!raw.trim())return 'missing';
+ // Accept fine-grained and classic PATs; never return any part of the value.
+ return /^(?:github_pat_[A-Za-z0-9_]+|ghp_[A-Za-z0-9]+)$/.test(raw.trim())?'configured':'invalid_format';
+}
+export async function github(env,path,method='GET',body,fetcher=(url,init)=>globalThis.fetch(url,init)){
+ const state=tokenState(env);
+ if(method!=='GET'&&state==='missing')throw new GitHubError('TOKEN_MISSING');
+ if(state==='invalid_format')throw new GitHubError('TOKEN_FORMAT');
+ const token=state==='configured'?env.STAR_GITHUB_TOKEN.trim():null;
+ let response;
+ try{
+  response=await fetcher('https://api.github.com/repos/'+REPO+path,{method,redirect:'error',headers:{accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'STAR-AI-Workspace',...(token?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+ }catch{throw new GitHubError('GITHUB_NETWORK');}
+ if(!response.ok)throw new GitHubError('GITHUB_HTTP',response.status);
+ try{return await response.json();}catch{throw new GitHubError('GITHUB_JSON');}
+}
+export function githubFailure(e){
+ if(!(e instanceof GitHubError))return {code:'WORKSPACE_ERROR',error:'Workspace operation failed; run the connection diagnostic'};
+ const messages={TOKEN_MISSING:'GitHub write token not configured',TOKEN_FORMAT:'GitHub secret has an invalid PAT format; copy the generated token, not its name',GITHUB_NETWORK:'Could not reach GitHub API from Cloudflare',GITHUB_JSON:'GitHub API returned an invalid JSON response',GITHUB_HTTP:'GitHub API rejected the request (HTTP '+e.status+')'};
+ return {code:e.code,error:messages[e.code]||'GitHub operation failed',...(e.status?{githubStatus:e.status}:{})};
 }
 export async function verifyChecks(env,head){
  if(!shaOK(head))return false;
