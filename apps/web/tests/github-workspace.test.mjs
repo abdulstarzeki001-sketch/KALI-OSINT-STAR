@@ -23,3 +23,13 @@ test('default fetch retains global receiver',async()=>{
  const old=globalThis.fetch;
  try{globalThis.fetch=function(){assert.equal(this,globalThis);return Promise.resolve(Response.json({ok:true}));};assert.equal((await github({},'')).ok,true);}finally{globalThis.fetch=old;}
 });
+
+test('Workers-compatible manual redirects and no credential forwarding',async()=>{
+ const fake='github_pat_TEST_ONLY';let count=0;
+ try{await github({STAR_GITHUB_TOKEN:fake},'', 'GET',undefined,async(url,init)=>{
+  count++;assert.equal(init.redirect,'manual');assert.equal(url,'https://api.github.com/repos/abdulstarzeki001-sketch/KALI-OSINT-STAR');
+  return new Response(null,{status:302,headers:{location:'https://example.invalid/redirect'}});
+ });assert.fail('expected redirect rejection');}
+ catch(e){assert.deepEqual(githubFailure(e),{code:'GITHUB_REDIRECT',error:'GitHub API redirect refused; credentials were not forwarded',githubStatus:302});}
+ assert.equal(count,1);
+});
