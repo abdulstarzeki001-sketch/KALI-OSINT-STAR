@@ -1,0 +1,3 @@
+CREATE TABLE IF NOT EXISTS star_ai_profile(owner TEXT PRIMARY KEY,prompt TEXT NOT NULL,enabled INTEGER NOT NULL,knowledge INTEGER NOT NULL,updated INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS star_knowledge_docs(owner TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,chars INTEGER NOT NULL,created INTEGER NOT NULL,PRIMARY KEY(owner,id));
+CREATE TABLE IF NOT EXISTS star_knowledge_chunks(owner TEXT NOT NULL,doc TEXT NOT NULL,part INTEGER NOT NULL,body TEXT NOT NULL,PRIMARY KEY(owner,doc,part),FOREIGN KEY(owner,doc) REFERENCES star_knowledge_docs(owner,id) ON DELETE CASCADE);
