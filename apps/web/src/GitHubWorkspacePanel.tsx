@@ -8,6 +8,7 @@ async function api(query='',data?:object){
  if(!r.ok)throw Error(v.error||'HTTP '+r.status);return v;
 }
 export default function GitHubWorkspacePanel(){
+ const [diagnostic,setDiagnostic]=useState('');
  const [files,setFiles]=useState<string[]>([]),[path,setPath]=useState('README.md'),[task,setTask]=useState(''),[source,setSource]=useState(''),[change,setChange]=useState<Change|null>(null),[history,setHistory]=useState<Change[]>([]),[write,setWrite]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  async function refresh(){const v=await api();setWrite(v.writeConfigured);setHistory(v.changes);}
  async function action(fn:()=>Promise<void>){setBusy(true);setError('');setNotice('');try{await fn();}catch(e){setError(e instanceof Error?e.message:'تعذر التنفيذ');}finally{setBusy(false);}}
@@ -16,6 +17,8 @@ export default function GitHubWorkspacePanel(){
  <header><span className="eyebrow">STAR AI / GITHUB WORKSPACE</span><h2>وكيل GitHub — قراءة وتعديل ونشر</h2><p>المستودع المصرح به: <a href={repo} target="_blank" rel="noreferrer">KALI-OSINT-STAR</a>. يقترح النموذج تعديلاً فعلياً لملف واحد ويعرضه للموافقة. لا يكتب مباشرة إلى main.</p><p>{write?'مفتاح الكتابة مضبوط؛ صلاحياته تُتحقق عند الطلب.':'مفتاح GitHub للكتابة غير مضبوط بعد؛ القراءة والاقتراح متاحان إذا سمحت الخدمة.'}</p></header>
  {error&&<p role="alert" className="star-settings-error">{error}</p>}{notice&&<p role="status">{notice}</p>}
  <div className="star-settings-actions"><button disabled={busy} onClick={()=>void action(async()=>{const d=await api('?action=files');setFiles(d.files);})}>جلب ملفات GitHub</button><button disabled={busy} onClick={()=>void action(refresh)}>تحديث حالة الربط</button></div>
+ <div className="star-settings-actions"><button disabled={busy} onClick={()=>void action(async()=>{const d=await api('?action=diagnose');setDiagnostic(JSON.stringify(d,null,2));})}>تشخيص اتصال GitHub</button></div>
+ {diagnostic&&<pre dir="ltr" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{diagnostic}</pre>}
  <label>مسار الملف<input value={path} dir="ltr" list="star-github-files" onChange={e=>{setPath(e.target.value);setSource('');}}/></label><datalist id="star-github-files">{files.map(x=><option key={x} value={x}/>)}</datalist>
  <button disabled={busy||!path.trim()} onClick={()=>void action(async()=>{const d=await api('?action=file&path='+encodeURIComponent(path));setSource(d.text);})}>قراءة الملف من main</button>
  {source&&<details><summary>عرض محتوى الملف</summary><pre dir="ltr" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{source}</pre></details>}
