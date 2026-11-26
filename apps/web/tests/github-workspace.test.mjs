@@ -92,3 +92,9 @@ test('integrated route flow: read, AI draft, scoped approval, branch, commit, PR
   assert.equal(sql.prepare('SELECT state FROM star_github_changes WHERE id=?').get(draft.id).state,'merged');
  }finally{sql.close();}
 });
+
+test('Actions repository dispatch accepts empty 204 and checks exact dispatch branch',async()=>{
+ const fake='github_pat_TEST_ONLY';const head='c'.repeat(40),branch='star-ai/edit-123';const env={STAR_GITHUB_TOKEN:fake,STAR_GITHUB_EGRESS:{fetch:async(url,init)=>{if(init.method==='POST'){assert.ok(url.endsWith('/dispatches'));return new Response(null,{status:204});}assert.ok(url.includes('event=workflow_dispatch'));return Response.json({workflow_runs:[{head_sha:head,event:'workflow_dispatch',head_branch:branch,status:'completed',conclusion:'success'}]});}}};
+ assert.deepEqual(await github(env,'/dispatches','POST',{event_type:'star-ai-approved-edit'}),{});
+ const {verifyChecks}=await import('../github-workspace.js');assert.equal(await verifyChecks(env,head,branch),true);assert.equal(await verifyChecks(env,head,'different'),false);
+});

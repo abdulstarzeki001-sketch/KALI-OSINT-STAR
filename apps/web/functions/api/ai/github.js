@@ -1,10 +1,10 @@
 import {verifyAccessRequest,accessFailureStatus} from '../../../access-jwt.js';
 import {ownerKey} from '../../../durable-memory.js';
 import {readProfile} from '../../../ai-settings.js';
-import {REPO,safePath,shaOK,idOK,applyEdit,encodeText,decodeText,sensitive,github,verifyChecks,tokenState,githubFailure} from '../../../github-workspace.js';
+import {REPO,safePath,shaOK,idOK,applyEdit,encodeText,decodeText,sensitive,github,verifyChecks,checkEvidence,tokenState,githubFailure} from '../../../github-workspace.js';
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'private, no-store','x-content-type-options':'nosniff'}});
 const pathURL=p=>p.split('/').map(encodeURIComponent).join('/');
-const publicRecord=r=>({id:r.id,path:r.path,task:r.task,before:r.before_text,after:r.after_text,state:r.state,pr:r.pr,created:r.created});
+const publicRecord=r=>({id:r.id,path:r.path,task:r.task,before:r.before_text,after:r.after_text,state:r.state,pr:r.pr,head:r.head_sha,created:r.created});
 async function readFile(env,path,ref){
  const f=await github(env,'/contents/'+pathURL(path)+'?ref='+ref);
  if(f.type!=='file'||f.encoding!=='base64'||!shaOK(f.sha)||f.size>50000)throw Error('Unsupported file');
@@ -41,7 +41,7 @@ export async function handleGitHub({request,env},verify=verifyAccessRequest){
      const tree=await github(env,'/git/trees/'+ref.object.sha+'?recursive=1');
      if(!Array.isArray(tree.tree))throw Error('Unexpected tree');
      checks.tree='ok';
-     const evidence=await db.prepare("SELECT id,pr,head_sha,state FROM star_github_changes WHERE owner=? AND state IN ('pr_open','merged') AND pr IS NOT NULL ORDER BY created DESC LIMIT 1").bind(owner).first();
+     const evidence=await db.prepare("SELECT id,pr,head_sha,state FROM star_github_changes WHERE owner=? AND state IN ('pr_open','merged','actions_pr_open','actions_merged') AND pr IS NOT NULL ORDER BY created DESC LIMIT 1").bind(owner).first();
      if(evidence&&idOK(evidence.id)&&Number.isInteger(evidence.pr)&&shaOK(evidence.head_sha)){
       const pr=await github(env,'/pulls/'+evidence.pr);
       if(pr.number===evidence.pr&&pr.head?.ref==='star-ai/edit-'+evidence.id&&pr.head?.sha===evidence.head_sha&&pr.head?.repo?.full_name===REPO&&pr.base?.ref==='main')writeEvidence={pr:evidence.pr,head:evidence.head_sha,state:evidence.state};
@@ -62,7 +62,16 @@ export async function handleGitHub({request,env},verify=verifyAccessRequest){
    }
    if(action==='status'){
     const rows=await db.prepare('SELECT id,path,task,state,pr,created FROM star_github_changes WHERE owner=? ORDER BY created DESC LIMIT 30').bind(owner).all();
-    return json({repository:REPO,writeConfigured:!!env.STAR_GITHUB_TOKEN,changes:rows.results||[]});
+    return json({repository:REPO,writeConfigured:tokenState(env)==='configured',actionsConfigured:!!env.STAR_GITHUB_EGRESS,changes:rows.results||[]});
+   }
+   if(action==='execution'){
+    const id=u.searchParams.get('id');if(!idOK(id))return json({error:'Invalid ID'},422);
+    const row=await db.prepare('SELECT * FROM star_github_changes WHERE owner=? AND id=?').bind(owner,id).first();if(!row)return json({error:'Not found'},404);
+    const branch='star-ai/edit-'+id;
+    const runs=await github(env,'/actions/workflows/star-ai-edit.yml/runs?event=repository_dispatch&per_page=30');
+    const run=(runs.workflow_runs||[]).find(x=>x.display_title==='STAR edit '+id&&x.event==='repository_dispatch');
+    const checks=shaOK(row.head_sha)?await checkEvidence(env,row.head_sha,row.state.startsWith('actions_')?branch:''):[];
+    return json({state:row.state,run:run?{id:run.id,status:run.status,conclusion:run.conclusion}:null,checks,pr:row.pr,head:row.head_sha});
    }
    if(action==='change'){
     const id=u.searchParams.get('id');if(!idOK(id))return json({error:'Invalid ID'},422);
@@ -93,11 +102,35 @@ export async function handleGitHub({request,env},verify=verifyAccessRequest){
    await db.prepare("INSERT INTO star_github_changes(owner,id,path,base_sha,blob_sha,before_text,after_text,task,state,created) VALUES(?,?,?,?,?,?,?,?,'draft',?)").bind(owner,id,d.path,baseSha,f.sha,f.text,after,d.task,now).run();
    return json({id,path:d.path,task:d.task,before:f.text,after,state:'draft',created:now},201);
   }
-  if(!idOK(d.id)||!['publish','merge'].includes(d.action)||d.approve!==true)return json({error:'Explicit approval required'},422);
+  if(!idOK(d.id)||!['publish','publish_actions','sync_actions','merge'].includes(d.action)||(d.action!=='sync_actions'&&d.approve!==true))return json({error:'Explicit approval required'},422);
   if(!env.STAR_GITHUB_TOKEN)return json({error:'GitHub token not configured'},503);
   const row=await db.prepare('SELECT * FROM star_github_changes WHERE owner=? AND id=?').bind(owner,d.id).first();
   if(!row||!safePath(row.path))return json({error:'Change not found'},404);
   const branch='star-ai/edit-'+row.id;
+  if(d.action==='publish_actions'){
+   if(!env.STAR_GITHUB_EGRESS)return json({error:'Private bridge required'},503);
+   if(row.state!=='draft')return json({error:'Change already submitted or requires recovery'},409);
+   if(!idOK(row.id)||!shaOK(row.base_sha)||!shaOK(row.blob_sha)||typeof row.after_text!=='string'||sensitive(row.after_text)||row.after_text.length>20000)return json({error:'Invalid stored proposal'},422);
+   const base=await github(env,'/git/ref/heads/main');if(base.object?.sha!==row.base_sha)return json({error:'main changed; generate a fresh proposal'},409);
+   const content=encodeText(row.after_text);
+   if(content.length>60000)return json({error:'Proposal too large for Actions; use a smaller edit'},422);
+   const lock=await db.prepare("UPDATE star_github_changes SET state='actions_queued' WHERE owner=? AND id=? AND state='draft'").bind(owner,row.id).run();
+   if(!lock.meta?.changes)return json({error:'Already submitted'},409);
+   await github(env,'/dispatches','POST',{event_type:'star-ai-approved-edit',client_payload:{id:row.id,path:row.path,base:row.base_sha,blob:row.blob_sha,content}});
+   return json({id:row.id,state:'actions_queued',notice:'Actions dispatch accepted; refresh execution to verify results'});
+  }
+  if(d.action==='sync_actions'){
+   if(row.state!=='actions_queued')return json({error:'No queued Actions change'},409);
+   const prs=await github(env,'/pulls?state=open&base=main&head='+encodeURIComponent(REPO.split('/')[0]+':'+branch)+'&per_page=10');
+   const pr=Array.isArray(prs)?prs.find(x=>x.head?.ref===branch&&x.head?.repo?.full_name===REPO&&x.base?.ref==='main'&&x.base?.sha===row.base_sha&&shaOK(x.head?.sha)&&Number.isInteger(x.number)):null;
+   if(!pr)return json({id:row.id,state:'actions_queued',notice:'PR not yet verified; check Actions status before any retry'});
+   const list=await github(env,'/pulls/'+pr.number+'/files?per_page=100');
+   if(!Array.isArray(list)||list.length!==1||list[0].filename!==row.path||list[0].status!=='modified')return json({error:'Unexpected PR diff; review manually'},409);
+   const f=await readFile(env,row.path,pr.head.sha);
+   if(f.text!==row.after_text)return json({error:'PR differs from approved preview'},409);
+   await db.prepare("UPDATE star_github_changes SET state='actions_pr_open',pr=?,head_sha=? WHERE owner=? AND id=? AND state='actions_queued'").bind(pr.number,pr.head.sha,owner,row.id).run();
+   return json({id:row.id,state:'actions_pr_open',pr:pr.number,head:pr.head.sha});
+  }
   if(d.action==='publish'){
    if(row.state!=='draft')return json({error:'Change already submitted or requires recovery'},409);
    const base=await github(env,'/git/ref/heads/main');
@@ -113,16 +146,17 @@ export async function handleGitHub({request,env},verify=verifyAccessRequest){
    await db.prepare("UPDATE star_github_changes SET state='pr_open',pr=?,head_sha=? WHERE owner=? AND id=?").bind(pr.number,head,owner,row.id).run();
    return json({id:row.id,state:'pr_open',pr:pr.number,url:'https://github.com/'+REPO+'/pull/'+pr.number});
   }
-  if(row.state!=='pr_open'||!Number.isInteger(row.pr)||!shaOK(row.head_sha))return json({error:'No open approved pull request'},409);
+  if(!['pr_open','actions_pr_open'].includes(row.state)||!Number.isInteger(row.pr)||!shaOK(row.head_sha))return json({error:'No open approved pull request'},409);
   const pr=await github(env,'/pulls/'+row.pr);
   if(pr.state!=='open'||pr.base?.ref!=='main'||pr.head?.ref!==branch||pr.head?.sha!==row.head_sha||pr.head?.repo?.full_name!==REPO)return json({error:'PR changed; review GitHub manually'},409);
   const base=await github(env,'/git/ref/heads/main');
   if(base.object?.sha!==row.base_sha)return json({error:'main changed; review or regenerate the PR manually'},409);
-  if(!await verifyChecks(env,row.head_sha))return json({error:'CI and STAR AI Quality must both pass on this exact commit'},409);
+  if(!await verifyChecks(env,row.head_sha,row.state==='actions_pr_open'?branch:''))return json({error:'CI and STAR AI Quality must both pass on this exact commit'},409);
   const merged=await github(env,'/pulls/'+row.pr+'/merge','PUT',{sha:row.head_sha,merge_method:'squash'});
   if(!merged.merged)return json({error:'Merge refused by GitHub'},409);
-  await db.prepare("UPDATE star_github_changes SET state='merged' WHERE owner=? AND id=?").bind(owner,row.id).run();
-  return json({id:row.id,state:'merged',pr:row.pr,sha:merged.sha,notice:'Cloudflare deployment triggered by main; verify deployment separately'});
+  const finalState=row.state==='actions_pr_open'?'actions_merged':'merged';
+  await db.prepare('UPDATE star_github_changes SET state=? WHERE owner=? AND id=?').bind(finalState,owner,row.id).run();
+  return json({id:row.id,state:finalState,pr:row.pr,sha:merged.sha,notice:'Cloudflare deployment triggered by main; verify deployment separately'});
  }catch(e){return json(githubFailure(e),503);}
 }
 export const onRequest=handleGitHub;

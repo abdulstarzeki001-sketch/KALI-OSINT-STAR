@@ -1,0 +1,64 @@
+name: STAR AI Approved Edit
+run-name: STAR edit ${{ github.event.client_payload.id }}
+on:
+  repository_dispatch:
+    types: [star-ai-approved-edit]
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+concurrency:
+  group: star-edit-${{ github.event.client_payload.id }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'abdulstarzeki001-sketch/KALI-OSINT-STAR' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Publish reviewed bytes without executing them
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readFileSync,appendFileSync} from 'node:fs';
+          const repo='abdulstarzeki001-sketch/KALI-OSINT-STAR';
+          const {client_payload:p}=JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH,'utf8'));
+          const sha=s=>typeof s==='string'&&/^[a-f0-9]{40}$/.test(s);
+          const uuid=s=>typeof s==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(s);
+          const safePath=s=>typeof s==='string'&&s.length<=180&&s.split('/').every(x=>/^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/.test(x)&&!/(secret|credential|token|password|private.key|\.env)/i.test(x))&&(/^(apps\/web\/src\/|apps\/web\/tests\/|docs\/)/.test(s)||s==='README.md')&&/\.(tsx?|jsx?|mjs|css|md|txt|json|py|html)$/.test(s);
+          assert.ok(p&&uuid(p.id)&&sha(p.base)&&sha(p.blob)&&safePath(p.path));
+          assert.ok(typeof p.content==='string'&&p.content.length<=110000&&/^[A-Za-z0-9+/]+={0,2}$/.test(p.content));
+          const bytes=Buffer.from(p.content,'base64');
+          assert.equal(bytes.toString('base64'),p.content);
+          const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
+          assert.ok(text.trim()&&text.length<=20000&&!text.includes('\0'));
+          assert.ok(!/-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----|(?:gh[pousr]_|github_pat_|sk-(?:proj-)?)[A-Za-z0-9_-]{20,}|Authorization\s*:\s*Bearer\s+[A-Za-z0-9._~-]{24,}/i.test(text));
+          const branch='star-ai/edit-'+p.id,path=p.path.split('/').map(encodeURIComponent).join('/');
+          const log=s=>{console.log(s);appendFileSync(process.env.GITHUB_STEP_SUMMARY,s+'\n\n');};
+          async function api(path,method='GET',body){
+            const res=await fetch('https://api.github.com/repos/'+repo+path,{method,redirect:'error',headers:{authorization:'Bearer '+process.env.GH_TOKEN,accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'STAR-AI-Approved-Edit',...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+            if(!res.ok)throw Error(method+' '+path.split('?')[0]+' HTTP '+res.status);
+            return res.status===204?{}:res.json();
+          }
+          const main=await api('/git/ref/heads/main');
+          assert.equal(main.object.sha,p.base,'main changed; request a fresh proposal');
+          const f=await api('/contents/'+path+'?ref='+p.base);
+          assert.equal(f.type,'file');assert.equal(f.sha,p.blob);assert.equal(f.encoding,'base64');
+          assert.notDeepEqual(Buffer.from(f.content,'base64'),bytes);
+          const ref=await api('/git/refs','POST',{ref:'refs/heads/'+branch,sha:p.base});
+          assert.equal(ref.object.sha,p.base);
+          const commit=await api('/contents/'+path,'PUT',{message:'STAR AI approved edit '+p.id,content:p.content,sha:p.blob,branch});
+          const head=commit.commit.sha;assert.ok(sha(head));
+          const reread=await api('/contents/'+path+'?ref='+head);
+          assert.deepEqual(Buffer.from(reread.content,'base64'),bytes);
+          const pr=await api('/pulls','POST',{title:'STAR AI approved edit '+p.id,head:branch,base:'main',body:'Owner-approved single-file preview. CI and Quality must pass before separate merge approval.'});
+          assert.equal(pr.head.sha,head);assert.equal(pr.base.ref,'main');assert.ok(Number.isInteger(pr.number));
+          log('Created PR #'+pr.number+' at '+head+'. No merge performed.');
+          for(const file of ['ci.yml','star-ai-quality.yml']){
+            await api('/actions/workflows/'+file+'/dispatches','POST',{ref:branch});
+            log('Dispatched '+file+' on '+branch+'.');
+          }
+          NODE

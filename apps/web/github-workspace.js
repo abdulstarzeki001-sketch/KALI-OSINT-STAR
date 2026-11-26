@@ -40,6 +40,7 @@ export async function github(env,path,method='GET',body,fetcher=(url,init)=>glob
  if(response.status>=300&&response.status<400)throw new GitHubError('GITHUB_REDIRECT',response.status);
  if(response.status===502&&response.headers.get('x-star-egress-error'))throw new GitHubError('GITHUB_BRIDGE_NETWORK',502);
  if(!response.ok)throw new GitHubError('GITHUB_HTTP',response.status);
+ if(response.status===204)return {};
  try{return await response.json();}catch{throw new GitHubError('GITHUB_JSON');}
 }
 export function githubFailure(e){
@@ -47,12 +48,18 @@ export function githubFailure(e){
  const messages={TOKEN_MISSING:'GitHub write token not configured',TOKEN_FORMAT:'GitHub secret has an invalid PAT format; copy the generated token, not its name',GITHUB_NETWORK:'Could not reach GitHub API from Cloudflare',GITHUB_BRIDGE_NETWORK:'Private GitHub bridge could not reach GitHub API',GITHUB_REDIRECT:'GitHub API redirect refused; credentials were not forwarded',GITHUB_JSON:'GitHub API returned an invalid JSON response',GITHUB_HTTP:'GitHub API rejected the request (HTTP '+e.status+')'};
  return {code:e.code,error:messages[e.code]||'GitHub operation failed',...(e.status?{githubStatus:e.status}:{})};
 }
-export async function verifyChecks(env,head){
- if(!shaOK(head))return false;
+export async function checkEvidence(env,head,branch=''){
+ if(!shaOK(head))return [];
+ const result=[];
  for(const file of ['ci.yml','star-ai-quality.yml']){
-  const data=await github(env,'/actions/workflows/'+file+'/runs?event=pull_request&head_sha='+head+'&per_page=10');
-  const run=(data.workflow_runs||[]).find(x=>x.head_sha===head&&x.event==='pull_request');
-  if(!run||run.status!=='completed'||run.conclusion!=='success')return false;
+  const event=branch?'workflow_dispatch':'pull_request';
+  const data=await github(env,'/actions/workflows/'+file+'/runs?event='+event+'&head_sha='+head+'&per_page=10'+(branch?'&branch='+encodeURIComponent(branch):''));
+  const run=(data.workflow_runs||[]).find(x=>x.head_sha===head&&x.event===event&&(!branch||x.head_branch===branch));
+  result.push({workflow:file,status:run?.status||'not_started',conclusion:run?.conclusion||null,id:Number.isInteger(run?.id)?run.id:null});
  }
- return true;
+ return result;
+}
+export async function verifyChecks(env,head,branch=''){
+ const checks=await checkEvidence(env,head,branch);
+ return checks.length===2&&checks.every(x=>x.status==='completed'&&x.conclusion==='success');
 }
