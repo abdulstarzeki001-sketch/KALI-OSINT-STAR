@@ -1,0 +1,41 @@
+name: STAR V2 Live Multi-file Verification
+on:
+  push:
+    branches: [test/star-developer-v2-live-20261126]
+    paths: [.github/workflows/star-v2-live-verification.yml]
+permissions:
+  contents: write
+jobs:
+  dispatch:
+    if: github.repository == 'abdulstarzeki001-sketch/KALI-OSINT-STAR' && github.ref == 'refs/heads/test/star-developer-v2-live-20261126'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Send a fixed documentation-only multi-file verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {appendFileSync} from 'node:fs';
+          const repo='abdulstarzeki001-sketch/KALI-OSINT-STAR';
+          const id='2b53d78f-39e6-4d60-9bc6-9cb76ec86d12',base='ab8691249f01e0368a462572fdee46a73f54cb58';
+          const oldPath='docs/STAR_AUTONOMOUS_DEVELOPER_V2.md';
+          const newPath='docs/v2-smoke/verification-20261126.md';
+          assert.equal(process.env.GITHUB_REPOSITORY,repo);
+          async function api(p,method='GET',body){
+            const res=await fetch('https://api.github.com/repos/'+repo+p,{method,redirect:'error',headers:{authorization:'Bearer '+process.env.GH_TOKEN,accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'STAR-v2-live-verification',...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+            if(!res.ok)throw Error(method+' '+p.split('?')[0]+' HTTP '+res.status);
+            return res.status===204?{}:res.json();
+          }
+          assert.equal((await api('/git/ref/heads/main')).object.sha,base);
+          const f=await api('/contents/'+oldPath+'?ref='+base);
+          assert.equal(f.type,'file');assert.equal(f.encoding,'base64');assert.match(f.sha,/^[a-f0-9]{40}$/);
+          const t=await api('/git/trees/'+base+'?recursive=1');assert.ok(!t.truncated);assert.ok(!t.tree.some(x=>x.path===newPath));
+          const content=Buffer.concat([Buffer.from(f.content,'base64'),Buffer.from('\n\n## Independent V2 live test (do not merge)\n')]).toString('base64');
+          const files=[{path:oldPath,op:'modify',blob:f.sha,content},{path:newPath,op:'create',blob:null,content:Buffer.from('# V2 live verification\n\nIsolated documentation-only test. Do not merge.\n').toString('base64')}];
+          await api('/dispatches','POST',{event_type:'star-ai-v2-approved-edit',client_payload:{id,base,files}});
+          const msg='PASS: dispatched STAR V2 '+id+' with exactly two harmless documentation operations. No merge authorized.';
+          console.log(msg);appendFileSync(process.env.GITHUB_STEP_SUMMARY,msg+'\n');
+          NODE
