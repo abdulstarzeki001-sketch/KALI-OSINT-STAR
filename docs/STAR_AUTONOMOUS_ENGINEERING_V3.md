@@ -25,3 +25,6 @@ Railway propagates incomplete client disconnects through the request AbortSignal
 
 ## V3.8 upstream diagnostics
 Distinguish private Ollama catalog reachability and model presence from generation success. One bounded catalog probe and, only when the expected model is listed, one 64-token inference probe at gateway startup. Both use the existing authorized tailnet route and log only result codes and elapsed time. No GPU configuration change, new credential, public diagnostic endpoint or scheduled paid inference. Live owner acceptance remains: generate a harmless documentation plan, approve and verify exact PR/CI, separately approve merge, verify deployed SHA, then preview rollback and review before approval.
+
+## V3.9 monitor failure evidence
+Each public GitHub endpoint has a 12-second read/body deadline, with sanitized endpoint-specific network, timeout, HTTP, rate-limit and response-format categories in the heartbeat. Both reads settle before a complete snapshot is recorded; any partial failure preserves the prior evidence and does not modify authoritative job state. The operations panel flags stale (>20 minutes) or failed monitoring. No automatic retries, tokens, changed cron schedule or public route. Redeploy only the monitor Worker with its existing D1 binding and disabled public URLs.

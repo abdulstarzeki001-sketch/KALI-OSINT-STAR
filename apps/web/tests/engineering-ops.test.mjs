@@ -14,7 +14,14 @@ test('observer matches approved job, exact head/base and never changes authorita
  assert.equal((await observe(env,f,123)).observed,1);assert.equal(calls.length,2);
  assert.equal(sql.prepare('SELECT state FROM star_developer_v2').get().state,'queued');const row=sql.prepare('SELECT * FROM star_v3_observation').get();assert.equal(row.pr,12);assert.equal(row.head,head);assert.equal(row.executor_id,42);
  assert.equal(matchObservation({id,base_sha:base},[{...run,head_sha:head}],[{...pr,base:{ref:'main',sha:head}}]).observation,'not_seen');
- await assert.rejects(observe(env,async()=>new Response(null,{status:429}),124));assert.equal(sql.prepare('SELECT status FROM star_v3_monitor_heartbeat').get().status,'upstream_error');assert.equal(sql.prepare('SELECT checked FROM star_v3_observation').get().checked,123);
+ await assert.rejects(observe(env,async()=>new Response(null,{status:429}),124));assert.equal(sql.prepare('SELECT status FROM star_v3_monitor_heartbeat').get().status,'upstream_error:runs_rate_limited,prs_rate_limited');assert.equal(sql.prepare('SELECT checked FROM star_v3_observation').get().checked,123);
+ await assert.rejects(observe(env,async(url)=>url.includes('/actions/')?Response.json({workflow_runs:[]}):new Response(null,{status:403,headers:{'x-ratelimit-remaining':'0'}}),125));
+ assert.equal(sql.prepare('SELECT status FROM star_v3_monitor_heartbeat').get().status,'upstream_error:prs_rate_limited');
+ assert.equal(sql.prepare('SELECT checked FROM star_v3_observation').get().checked,123);
+ let aborted=0;
+ await assert.rejects(observe(env,async(_url,init)=>{init.signal.addEventListener('abort',()=>aborted++,{once:true});return new Promise(()=>{});},126,{timeoutMs:10}));
+ assert.equal(aborted,2);assert.equal(sql.prepare('SELECT status FROM star_v3_monitor_heartbeat').get().status,'upstream_error:runs_timeout,prs_timeout');
+ assert.equal(sql.prepare('SELECT checked FROM star_v3_observation').get().checked,123);
  assert.equal((await worker.fetch()).status,404);
  }finally{sql.close();}
 });
