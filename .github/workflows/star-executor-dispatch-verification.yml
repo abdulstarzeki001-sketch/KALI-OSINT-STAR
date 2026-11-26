@@ -1,0 +1,42 @@
+name: STAR Executor Dispatch Verification
+on:
+  push:
+    branches: [test/star-executor-dispatch-20261126]
+    paths: [.github/workflows/star-executor-dispatch-verification.yml]
+permissions:
+  contents: write
+jobs:
+  dispatch:
+    if: github.repository == 'abdulstarzeki001-sketch/KALI-OSINT-STAR' && github.ref == 'refs/heads/test/star-executor-dispatch-20261126'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Dispatch harmless fixed documentation edit to production executor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {appendFileSync} from 'node:fs';
+          const repo='abdulstarzeki001-sketch/KALI-OSINT-STAR';
+          const id='ce87a422-189d-4a86-9fb4-a8e5d1a2ca22';
+          const path='docs/STAR_GITHUB_WORKSPACE.md';
+          const base='a679788f45f3125b32c27e638cdf200d78f424e5';
+          assert.equal(process.env.GITHUB_REPOSITORY,repo);
+          async function api(p,method='GET',body){
+            const res=await fetch('https://api.github.com/repos/'+repo+p,{method,redirect:'error',headers:{authorization:'Bearer '+process.env.GH_TOKEN,accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'STAR-executor-dispatch-verification',...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+            if(!res.ok)throw Error(method+' '+p.split('?')[0]+' HTTP '+res.status);
+            return res.status===204?{}:res.json();
+          }
+          assert.equal((await api('/git/ref/heads/main')).object.sha,base);
+          const f=await api('/contents/'+path+'?ref='+base);
+          assert.equal(f.type,'file');assert.equal(f.encoding,'base64');
+          assert.match(f.sha,/^[a-f0-9]{40}$/);
+          const original=Buffer.from(f.content,'base64');
+          const content=Buffer.concat([original,Buffer.from('\n\n## STAR Executor integration verification (do not merge)\n\nIndependent GitHub Actions dispatch test. Not a platform model or Cloudflare owner-session execution.\n')]).toString('base64');
+          assert.ok(content.length<=60000);
+          await api('/dispatches','POST',{event_type:'star-ai-approved-edit',client_payload:{id,path,base,blob:f.sha,content}});
+          const msg='PASS: repository_dispatch accepted for STAR edit '+id+'. Inspect the independent executor workflow and PR. No merge authorized.';
+          console.log(msg);appendFileSync(process.env.GITHUB_STEP_SUMMARY,msg+'\n');
+          NODE
