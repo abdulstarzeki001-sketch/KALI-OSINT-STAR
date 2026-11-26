@@ -76,8 +76,11 @@ async function stageProgress(db,owner,road){
    const child=rows.find(j=>j.parent_id===job.id&&j.kind==='repair'&&j.state!=='discarded');
    if(!child)break;job=child;
   }
-  const reverted=job.state==='merged'&&rows.some(j=>j.kind==='rollback'&&j.parent_id===job.id&&j.state==='merged');
-  return {index,state:reverted?'rolled_back':job.state,jobId:job.id,pr:job.pr,mergeSha:job.merge_sha};
+  const rollbacks=job.state==='merged'?rows.filter(j=>j.kind==='rollback'&&j.parent_id===job.id&&j.state!=='discarded'):[];
+  const reverted=rollbacks.find(j=>j.state==='merged');
+  const active=rollbacks.find(j=>['draft','queued','pr_open'].includes(j.state));
+  const rollback=reverted||active;
+  return {index,state:reverted?'rolled_back':job.state,jobId:job.id,pr:job.pr,mergeSha:job.merge_sha,...(rollback?{rollbackJobId:rollback.id,rollbackState:rollback.state}:{})};
  });
 }
 
