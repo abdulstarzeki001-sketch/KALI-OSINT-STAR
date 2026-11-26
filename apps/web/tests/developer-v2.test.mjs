@@ -49,7 +49,7 @@ test('route rejects anonymous and cross origin before touching storage',async()=
 
 test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch, exact reconciliation, CI repair and rollback',async()=>{
  const {DatabaseSync}=await import('node:sqlite');const {readFileSync}=await import('node:fs');const sql=new DatabaseSync(':memory:');
- for(const name of ['001','002','003','004'])sql.exec(readFileSync(new URL('../../../cloudflare/memory/'+name+'.sql',import.meta.url),'utf8'));
+ for(const name of ['001','002','003','004','005'])sql.exec(readFileSync(new URL('../../../cloudflare/memory/'+name+'.sql',import.meta.url),'utf8'));
  const db={prepare(query){return {bind(...args){const stmt=sql.prepare(query);return {first:async()=>stmt.get(...args)||null,all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})};}};}};
  const root='https://kali-osint-star.pages.dev',repo='abdulstarzeki001-sketch/KALI-OSINT-STAR',endpoint=root+'/api/ai/developer-v2';
  let main=base,dispatched=null,hasPR=false,wrong=false,passed=false,merged=false;
@@ -58,7 +58,7 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
  const entries=[{path:files[0].path,type:'blob',mode:'100644',sha:blob,size:3},{path:smokePath,type:'blob',mode:'100644',sha:blob,size:3}];
  const updated=files.map((f,i)=>({path:f.path,type:'blob',mode:'100644',sha:i?newblob2:newblob}));
  const env={STAR_MEMORY:db,STAR_GITHUB_TOKEN:'github_pat_TEST_ONLY',
- STAR_AI:{fetch:async(_url,init)=>{const m=JSON.parse(init.body).messages;const repair=m.at(-1).content.includes('Repair this proposed file');const create=m[0].content.includes('complete new text file');const first=m[0].content.includes('current path: docs/existing.md');return Response.json({reply:JSON.stringify(repair?(first?{old:'new',new:'fixed'}:{old:'created',new:'fixed new file'}):create?{content:'created'}:{old:'old',new:'new'})});}},
+ STAR_AI:{fetch:async(_url,init)=>{const m=JSON.parse(init.body).messages;if(m[0].content.includes('repository planning assistant'))return Response.json({reply:JSON.stringify({summary:'Docs plan',stages:[{title:'Docs',task:'Update docs',acceptance:'CI passes',files:[{path:files[0].path,op:'modify'}]}]})});const repair=m.at(-1).content.includes('Repair this proposed file');const create=m[0].content.includes('complete new text file');const first=m[0].content.includes('current path: docs/existing.md');return Response.json({reply:JSON.stringify(repair?(first?{old:'new',new:'fixed'}:{old:'created',new:'fixed new file'}):create?{content:'created'}:{old:'old',new:'new'})});}},
  STAR_GITHUB_EGRESS:{fetch:async(url,init)=>{
   const u=new URL(url),p=u.pathname.slice(('/repos/'+repo).length),body=init.body?JSON.parse(init.body):null;
   if(init.method!=='GET')writes.push(p);
@@ -81,6 +81,8 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
  const auth=sub=>async()=>({ok:true,identity:{sub}});
  const call=(query='',data,sub='owner')=>handleDeveloper({request:new Request(endpoint+query,{...(data?{method:'POST',headers:{origin:root,'content-type':'application/json'},body:JSON.stringify(data)}:{})}),env},auth(sub));
  try{
+  const planned=await call('',{action:'roadmap',task:'Update existing docs',provider:'llama-cloudflare'});assert.equal(planned.status,201);const road=await planned.json();assert.equal(road.provider,'llama-cloudflare');assert.equal(road.roadmap.stages[0].files[0].path,files[0].path);assert.equal(writes.length,0);
+  assert.equal((await (await call('?action=roadmaps')).json()).roadmaps.length,1);assert.equal((await (await call('?action=roadmaps',undefined,'other')).json()).roadmaps.length,0);
   const catalog=await (await call('?action=catalog')).json();assert.equal(catalog.files.length,2);
   const smoke=await (await call('',{action:'smoke_plan'})).json();assert.equal(smoke.kind,'smoke');assert.equal(smoke.files.length,2);assert.equal(writes.length,0);
   assert.equal((await call('',{action:'merge',id:smoke.id,approve:true})).status,409);
@@ -95,8 +97,8 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
   assert.equal((await (await call('',{action:'approve',id:draft.id,approve:true})).json()).state,'queued');
   assert.equal((await call('',{action:'approve',id:draft.id,approve:true})).status,409);assert.equal(writes.length,1);
   assert.equal((await (await call('',{action:'sync',id:draft.id})).json()).state,'queued');
-  hasPR=true;wrong=true;assert.equal((await call('',{action:'sync',id:draft.id})).status,409);wrong=false;
-  assert.equal((await (await call('',{action:'sync',id:draft.id})).json()).state,'pr_open');
+  hasPR=true;assert.equal((await call('',{action:'sync',id:draft.id,pr:12},'other')).status,404);wrong=true;assert.equal((await call('',{action:'sync',id:draft.id})).status,409);wrong=false;
+  assert.equal((await (await call('',{action:'sync',id:draft.id,pr:12})).json()).state,'pr_open');
   const status=await (await call('?action=status&id='+draft.id)).json();assert.equal(status.run.id,14);assert.equal(status.checks.length,2);
   assert.equal((await call('',{action:'merge',id:draft.id,approve:true})).status,409);
   const repair=await call('',{action:'repair',id:draft.id});assert.equal(repair.status,201);const fixed=await repair.json();assert.equal(fixed.kind,'repair');assert.equal(fixed.repairCount,1);assert.equal(fixed.files[0].after,'fixed');assert.equal(writes.length,1);
