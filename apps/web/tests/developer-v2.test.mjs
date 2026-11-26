@@ -49,7 +49,7 @@ test('route rejects anonymous and cross origin before touching storage',async()=
 
 test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch, exact reconciliation, CI repair and rollback',async()=>{
  const {DatabaseSync}=await import('node:sqlite');const {readFileSync}=await import('node:fs');const sql=new DatabaseSync(':memory:');
- for(const name of ['001','002','003','004','005'])sql.exec(readFileSync(new URL('../../../cloudflare/memory/'+name+'.sql',import.meta.url),'utf8'));
+ for(const name of ['001','002','003','004','005','006'])sql.exec(readFileSync(new URL('../../../cloudflare/memory/'+name+'.sql',import.meta.url),'utf8'));
  const db={prepare(query){return {bind(...args){const stmt=sql.prepare(query);return {first:async()=>stmt.get(...args)||null,all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})};}};}};
  const root='https://kali-osint-star.pages.dev',repo='abdulstarzeki001-sketch/KALI-OSINT-STAR',endpoint=root+'/api/ai/developer-v2';
  let main=base,dispatched=null,hasPR=false,wrong=false,passed=false,merged=false;
@@ -83,6 +83,14 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
  try{
   const planned=await call('',{action:'roadmap',task:'Update existing docs',provider:'llama-cloudflare',reviewSource:true});assert.equal(planned.status,201);const road=await planned.json();assert.equal(road.provider,'llama-cloudflare');assert.equal(road.roadmap.sourceReview.files.length,2);assert.equal(road.roadmap.sourceReview.files[0].partial,false);assert.equal(road.roadmap.stages[0].files[0].path,files[0].path);assert.equal(writes.length,0);
   assert.equal((await (await call('?action=roadmaps')).json()).roadmaps.length,1);assert.equal((await (await call('?action=roadmaps',undefined,'other')).json()).roadmaps.length,0);
+  const stageBefore=await (await call('?action=roadmap_progress&id='+road.id)).json();assert.equal(stageBefore.stages[0].state,'planned');
+  assert.equal((await call('?action=roadmap_progress&id='+road.id,undefined,'other')).status,404);
+  assert.equal((await call('',{action:'prepare_stage',roadmapId:road.id,index:0},'other')).status,404);
+  const stageDraft=await call('',{action:'prepare_stage',roadmapId:road.id,index:0});assert.equal(stageDraft.status,201);const stageJob=await stageDraft.json();assert.equal(stageJob.kind,'stage');assert.equal(stageJob.parent,road.id);assert.equal(writes.length,0);
+  const repeat=await (await call('',{action:'prepare_stage',roadmapId:road.id,index:0})).json();assert.equal(repeat.id,stageJob.id);
+  const stageAfter=await (await call('?action=roadmap_progress&id='+road.id)).json();assert.equal(stageAfter.stages[0].jobId,stageJob.id);assert.equal(stageAfter.stages[0].state,'draft');
+  assert.equal((await call('',{action:'discard',id:stageJob.id,approve:true})).status,200);
+  assert.equal((await (await call('?action=roadmap_progress&id='+road.id)).json()).stages[0].state,'planned');
   const probe=await (await call('',{action:'model_probe',provider:'llama-cloudflare'})).json();assert.equal(probe.ok,true);assert.equal(probe.provider,'llama-cloudflare');assert.equal(writes.length,0);
   const catalog=await (await call('?action=catalog')).json();assert.equal(catalog.files.length,2);
   const smoke=await (await call('',{action:'smoke_plan'})).json();assert.equal(smoke.kind,'smoke');assert.equal(smoke.files.length,2);assert.equal(writes.length,0);
