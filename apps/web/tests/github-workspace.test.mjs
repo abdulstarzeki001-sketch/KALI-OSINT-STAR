@@ -62,13 +62,14 @@ test('integrated route flow: read, AI draft, scoped approval, branch, commit, PR
    const p=u.pathname.slice(('/repos/'+repo).length);
    const data=init.body?JSON.parse(init.body):null;
    if(init.method!=='GET')writes.push({path:p,method:init.method});
+   if(p==='')return Response.json({full_name:repo});
    if(p==='/git/ref/heads/main')return Response.json({object:{sha:base}});
    if(p==='/git/trees/'+base)return Response.json({tree:[{type:'blob',path}]});
    if(p==='/contents/'+path&&init.method==='GET')return Response.json({type:'file',encoding:'base64',sha:blob,size:before.length,content:encodeText(before)});
    if(p==='/git/refs'&&init.method==='POST'){assert.equal(data.sha,base);assert.match(data.ref,/^refs\/heads\/star-ai\/edit-/);branch=data.ref.slice(11);return Response.json({ref:data.ref},{status:201});}
    if(p==='/contents/'+path&&init.method==='PUT'){assert.equal(data.branch,branch);assert.notEqual(data.branch,'main');assert.equal(data.sha,blob);assert.equal(decodeText(data.content),after);return Response.json({commit:{sha:head}});}
    if(p==='/pulls'&&init.method==='POST'){assert.equal(data.head,branch);assert.equal(data.base,'main');return Response.json({number:101,head:{sha:head}},{status:201});}
-   if(p==='/pulls/101')return Response.json({state:'open',base:{ref:'main'},head:{ref:branch,sha:head,repo:{full_name:repo}}});
+   if(p==='/pulls/101')return Response.json({number:101,state:'open',base:{ref:'main'},head:{ref:branch,sha:head,repo:{full_name:repo}}});
    if(p.startsWith('/actions/workflows/'))return Response.json({workflow_runs:[{head_sha:head,event:'pull_request',status:ciOK?'completed':'in_progress',conclusion:ciOK?'success':null}]});
    if(p==='/pulls/101/merge'&&init.method==='PUT'){assert.ok(ciOK);assert.equal(data.sha,head);return Response.json({merged:true,sha:'d'.repeat(40)});}
    throw Error('Unexpected mock operation '+p);
@@ -78,11 +79,13 @@ test('integrated route flow: read, AI draft, scoped approval, branch, commit, PR
  try{
   const list=await call('?action=files');assert.equal(list.status,200);assert.deepEqual((await list.json()).files,[path]);
   assert.equal((await (await call('?action=file&path='+encodeURIComponent(path))).json()).text,before);
+  const firstDiagnostic=await (await call('?action=diagnose')).json();assert.equal(firstDiagnostic.ok,true);assert.equal(firstDiagnostic.writeVerified,false);
   const proposed=await call('',{action:'propose',path,task:'Append integration test heading'});
   assert.equal(proposed.status,201);const draft=await proposed.json();assert.equal(draft.after,after);assert.equal(draft.state,'draft');assert.equal(writes.length,0);
   assert.equal((await call('',{action:'publish',id:draft.id,approve:false})).status,422);
   assert.equal((await call('',{action:'publish',id:draft.id,approve:true},'other-owner')).status,404);assert.equal(writes.length,0);
   const published=await call('',{action:'publish',id:draft.id,approve:true});assert.equal(published.status,200);assert.equal((await published.json()).pr,101);assert.equal(writes.length,3);
+  const evidence=await (await call('?action=diagnose')).json();assert.equal(evidence.writeVerified,true);assert.equal(evidence.writeEvidence.pr,101);assert.equal((await (await call('?action=diagnose',undefined,'other-owner')).json()).writeVerified,false);assert.equal(writes.length,3);
   assert.equal((await call('',{action:'publish',id:draft.id,approve:true})).status,409);assert.equal(writes.length,3);
   assert.equal((await call('',{action:'merge',id:draft.id,approve:true})).status,409);assert.equal(writes.length,3);
   ciOK=true;const merged=await call('',{action:'merge',id:draft.id,approve:true});assert.equal(merged.status,200);assert.equal((await merged.json()).state,'merged');assert.equal(writes.length,4);
