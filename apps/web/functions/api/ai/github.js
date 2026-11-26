@@ -30,7 +30,7 @@ export async function handleGitHub({request,env},verify=verifyAccessRequest){
    if(action==='diagnose'){
     const checks={access:'ok',storage:'unknown',token:tokenState(env),transport:env.STAR_GITHUB_EGRESS?'private_worker':'direct',repository:'not_tested',main:'not_tested',tree:'not_tested'};
     try{await db.prepare('SELECT id FROM star_github_changes WHERE owner=? LIMIT 1').bind(owner).all();checks.storage='ok';}catch{checks.storage='error';}
-    let failure=null;
+    let failure=null,writeEvidence=null;
     try{
      const repo=await github(env,'');
      if(repo.full_name!==REPO)throw Error('Unexpected repository');
@@ -41,8 +41,13 @@ export async function handleGitHub({request,env},verify=verifyAccessRequest){
      const tree=await github(env,'/git/trees/'+ref.object.sha+'?recursive=1');
      if(!Array.isArray(tree.tree))throw Error('Unexpected tree');
      checks.tree='ok';
+     const evidence=await db.prepare("SELECT id,pr,head_sha,state FROM star_github_changes WHERE owner=? AND state IN ('pr_open','merged') AND pr IS NOT NULL ORDER BY created DESC LIMIT 1").bind(owner).first();
+     if(evidence&&idOK(evidence.id)&&Number.isInteger(evidence.pr)&&shaOK(evidence.head_sha)){
+      const pr=await github(env,'/pulls/'+evidence.pr);
+      if(pr.number===evidence.pr&&pr.head?.ref==='star-ai/edit-'+evidence.id&&pr.head?.sha===evidence.head_sha&&pr.head?.repo?.full_name===REPO&&pr.base?.ref==='main')writeEvidence={pr:evidence.pr,head:evidence.head_sha,state:evidence.state};
+     }
     }catch(e){failure=githubFailure(e);}
-    return json({checks,ok:checks.storage==='ok'&&checks.token==='configured'&&checks.tree==='ok',failure,writeVerified:false,notice:'Read-only diagnostic. No GitHub files, branches or tokens changed.'});
+    return json({checks,ok:checks.storage==='ok'&&checks.token==='configured'&&checks.tree==='ok',failure,writeVerified:!!writeEvidence,writeEvidence,notice:'Read-only diagnostic. Write evidence verifies a historical owner-approved PR; it does not prove current token write permissions. No files, branches or tokens changed.'});
    }
    if(action==='files'){
     const ref=await github(env,'/git/ref/heads/main');
