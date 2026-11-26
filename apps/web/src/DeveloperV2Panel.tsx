@@ -53,7 +53,7 @@ export default function DeveloperV2Panel({initialTask=''}:{initialTask?:string})
  const ready=!!job&&!!checksReady(job);
  const live=!!job?.mergeSha&&deployed===job.mergeSha;
  const stages=job?[{label:'المقترح',status:'done'},{label:'التنفيذ',status:job.state==='draft'||job.state==='discarded'?'pending':job.run?.conclusion==='success'?'done':job.run?.status==='completed'?'failed':'active'},{label:'الاختبارات',status:ready?'done':job.checks?.some(c=>c.status==='completed'&&c.conclusion!=='success')?'failed':job.state==='pr_open'?'active':'pending'},{label:'الدمج',status:job.state==='merged'?'done':'pending'},{label:'النشر',status:live?'done':job.state==='merged'?'active':'pending'}]:[];
- return <section className="star-settings star-dev-v2" dir="rtl" aria-label="STAR Autonomous Developer V2">
+ return <section id="developer-v2-center" className="star-settings star-dev-v2" dir="rtl" aria-label="STAR Autonomous Developer V2">
  <header className="dev-v2-head"><div><span className="eyebrow">STAR / AUTONOMOUS DEVELOPER V2</span><h2>مركز التطوير والتشغيل</h2><p>خطّط، راجع، اختبر وانشر ضمن نطاق المشروع المصرّح.</p></div><span className={'dev-v2-pill '+(configured?'is-ready':'')}>{configured?'GitHub: مفتاح مضبوط':'GitHub: غير جاهز'}</span></header>
  {error&&<p role="alert" className="star-settings-error">{error}</p>}{notice&&<p role="status">{notice}</p>}
  <div className="dev-v2-metrics"><div><small>المهام المسجلة (آخر 30)</small><strong>{jobs.length}</strong></div><div><small>قيد التنفيذ / المراجعة</small><strong>{jobs.filter(j=>['queued','pr_open'].includes(j.state)).length}</strong></div><div><small>مدمجة</small><strong>{jobs.filter(j=>j.state==='merged').length}</strong></div></div>

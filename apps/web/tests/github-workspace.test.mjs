@@ -44,7 +44,7 @@ test('integrated route flow: read, AI draft, scoped approval, branch, commit, PR
  const {DatabaseSync}=await import('node:sqlite');
  const {readFileSync}=await import('node:fs');
  const sql=new DatabaseSync(':memory:');
- for(const name of ['001','002','003'])sql.exec(readFileSync(new URL('../../../cloudflare/memory/'+name+'.sql',import.meta.url),'utf8'));
+ for(const name of ['001','002','003','004'])sql.exec(readFileSync(new URL('../../../cloudflare/memory/'+name+'.sql',import.meta.url),'utf8'));
  const db={prepare(query){return {bind(...args){const stmt=sql.prepare(query);return {first:async()=>stmt.get(...args)||null,all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})};}};}};
  const root='https://kali-osint-star.pages.dev';
  const endpoint=root+'/api/ai/github';
@@ -53,9 +53,9 @@ test('integrated route flow: read, AI draft, scoped approval, branch, commit, PR
  const path='docs/STAR_GITHUB_WORKSPACE.md';
  const before='Original documentation.\n';
  const after=before+'\n## STAR AI Integration Test\n';
- const writes=[];let ciOK=false;let branch='';let actionsId='',actionsReady=false,actionsMismatch=false;const actionsHead='e'.repeat(40);
+ const writes=[];let ciOK=false;let appendMode=false;let branch='';let actionsId='',actionsReady=false,actionsMismatch=false;const actionsHead='e'.repeat(40);
  const env={STAR_MEMORY:db,STAR_GITHUB_TOKEN:'github_pat_TEST_ONLY',
- STAR_AI:{fetch:async(url,init)=>{assert.equal(url,'https://star-ai-service.internal/chat');const b=JSON.parse(init.body);assert.equal(b.mode,'code');assert.ok(b.messages.some(m=>m.content.includes(before)));return Response.json({reply:JSON.stringify({old:before,new:after})});}},
+ STAR_AI:{fetch:async(url,init)=>{assert.equal(url,'https://star-ai-service.internal/chat');const b=JSON.parse(init.body);assert.equal(b.mode,'code');assert.ok(b.messages.some(m=>m.content.includes(before)));return Response.json({reply:JSON.stringify(appendMode?{append:'## STAR AI Integration Test'}:{old:before,new:after})});}},
  STAR_GITHUB_EGRESS:{fetch:async(url,init)=>{
    const u=new URL(url);assert.equal(u.origin,'https://star-github-egress.internal');assert.equal(init.headers.authorization,'Bearer github_pat_TEST_ONLY');
    assert.ok(u.pathname.startsWith('/repos/'+repo));
@@ -88,6 +88,10 @@ test('integrated route flow: read, AI draft, scoped approval, branch, commit, PR
   const list=await call('?action=files');assert.equal(list.status,200);assert.deepEqual((await list.json()).files,[path]);
   assert.equal((await (await call('?action=file&path='+encodeURIComponent(path))).json()).text,before);
   const firstDiagnostic=await (await call('?action=diagnose')).json();assert.equal(firstDiagnostic.ok,true);assert.equal(firstDiagnostic.writeVerified,false);
+  appendMode=true;
+  const appendDraft=await call('',{action:'propose',path,task:'Append a heading without deleting anything'});
+  assert.equal(appendDraft.status,201);assert.equal((await appendDraft.json()).after,before+'\n\n## STAR AI Integration Test\n');assert.equal(writes.length,0);
+  appendMode=false;
   const proposed=await call('',{action:'propose',path,task:'Append integration test heading'});
   assert.equal(proposed.status,201);const draft=await proposed.json();assert.equal(draft.after,after);assert.equal(draft.state,'draft');assert.equal(writes.length,0);
   assert.equal((await call('',{action:'publish',id:draft.id,approve:false})).status,422);
@@ -118,4 +122,12 @@ test('Actions repository dispatch accepts empty 204 and checks exact dispatch br
  const fake='github_pat_TEST_ONLY';const head='c'.repeat(40),branch='star-ai/edit-123';const env={STAR_GITHUB_TOKEN:fake,STAR_GITHUB_EGRESS:{fetch:async(url,init)=>{if(init.method==='POST'){assert.ok(url.endsWith('/dispatches'));return new Response(null,{status:204});}assert.ok(url.includes('event=workflow_dispatch'));return Response.json({workflow_runs:[{head_sha:head,event:'workflow_dispatch',head_branch:branch,status:'completed',conclusion:'success'}]});}}};
  assert.deepEqual(await github(env,'/dispatches','POST',{event_type:'star-ai-approved-edit'}),{});
  const {verifyChecks}=await import('../github-workspace.js');assert.equal(await verifyChecks(env,head,branch),true);assert.equal(await verifyChecks(env,head,'different'),false);
+});
+
+test('legacy documentation append rejects empty anchors, invalid scope and secrets',()=>{
+ assert.equal(applyEdit('original\n','{"append":"عنوان"}',true),'original\n\n\nعنوان\n');
+ assert.throws(()=>applyEdit('original','{"append":"heading"}'));
+ assert.throws(()=>applyEdit('original','{"old":"","new":"heading"}',true));
+ assert.throws(()=>applyEdit('original','{"append":"heading","old":"original"}',true));
+ assert.throws(()=>applyEdit('original',JSON.stringify({append:'-----BEGIN PRIVATE KEY-----'}),true));
 });

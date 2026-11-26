@@ -2,9 +2,14 @@ export const REPO='abdulstarzeki001-sketch/KALI-OSINT-STAR';
 export const safePath=p=>typeof p==='string'&&p.length<=180&&p.split('/').every(s=>/^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/.test(s)&&!/(secret|credential|token|password|private.key|\.env)/i.test(s))&&(/^(apps\/web\/src\/|apps\/web\/tests\/|docs\/)/.test(p)||p==='README.md')&&/\.(tsx?|jsx?|mjs|css|md|txt|json|py|html)$/.test(p);
 export const shaOK=s=>typeof s==='string'&&/^[a-f0-9]{40}$/.test(s);
 export const idOK=s=>typeof s==='string'&&/^[a-f0-9-]{36}$/.test(s);
-export function applyEdit(before,reply){
+export function applyEdit(before,reply,allowAppend=false){
  const raw=reply.trim().replace(/^\x60{3}(?:json)?\s*/i,'').replace(/\s*\x60{3}$/,'');
  const p=JSON.parse(raw);
+ if(allowAppend&&p&&Object.keys(p).length===1&&typeof p.append==='string'&&p.append.trim()&&p.append.length<=3500){
+  const after=before+'\n\n'+p.append.trim()+'\n';
+  if(!after.trim()||after.length>20000||sensitive(after))throw Error('Invalid appended content');
+  return after;
+ }
  if(!p||typeof p.old!=='string'||typeof p.new!=='string'||!p.old||p.old===p.new||p.old.length>3500||p.new.length>5500)throw Error('Invalid edit');
  const at=before.indexOf(p.old);
  if(at<0||before.indexOf(p.old,at+1)>=0)throw Error('Edit must match exactly once');
