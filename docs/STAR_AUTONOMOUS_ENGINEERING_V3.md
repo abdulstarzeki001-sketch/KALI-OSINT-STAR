@@ -16,3 +16,6 @@ Roadmap generation may use relevant owner notes only when explicitly enabled. Wo
 
 ## V3.5 bounded provider response
 Private provider probes request 64 output tokens and enforce a 20-second deadline. Private engineering calls use at most 40 seconds (20 seconds in Auto) and a 1,200-token budget; Cloudflare calls use a 25-second deadline (20 for a probe). Timeouts cover response parsing, report HTTP 504, and record measured failed-probe latency. Explicit Qwen selection never falls back; Auto may fall back on transient failures only, and client cancellation stops further inference. This improves UI resilience, not the remote GPU's performance or availability. Existing service authorization remains unchanged.
+
+## V3.6 observation-assisted reconciliation
+If the branch-filtered PR lookup returns no match, V2 can use an owner-scoped observation no older than one hour as a candidate. It fetches the exact PR again through the authenticated bridge, checks the observed head, branch, repository, base and approved full file contents before transitioning the job. An observation never approves or merges a job. No automatic redispatch. UI status polling continues during transient busy state and still fetches executor status if reconciliation fails. Concurrent state changes are re-read rather than overwritten.
