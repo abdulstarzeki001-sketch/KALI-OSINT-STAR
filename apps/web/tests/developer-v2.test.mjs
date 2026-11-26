@@ -46,3 +46,55 @@ test('route rejects anonymous and cross origin before touching storage',async()=
  assert.equal((await handleDeveloper({request:new Request(endpoint),env:{}},async()=>({ok:false,reason:'ACCESS_REQUIRED'}))).status,401);
  assert.equal((await handleDeveloper({request:new Request(endpoint,{method:'POST',headers:{origin:'https://example.invalid'}}),env:{}},async()=>({ok:true}))).status,403);
 });
+
+test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch, exact reconciliation, CI repair and rollback',async()=>{
+ const {DatabaseSync}=await import('node:sqlite');const {readFileSync}=await import('node:fs');const sql=new DatabaseSync(':memory:');
+ for(const name of ['001','002','003','004'])sql.exec(readFileSync(new URL('../../../cloudflare/memory/'+name+'.sql',import.meta.url),'utf8'));
+ const db={prepare(query){return {bind(...args){const stmt=sql.prepare(query);return {first:async()=>stmt.get(...args)||null,all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})};}};}};
+ const root='https://kali-osint-star.pages.dev',repo='abdulstarzeki001-sketch/KALI-OSINT-STAR',endpoint=root+'/api/ai/developer-v2';
+ let main=base,dispatched=null,hasPR=false,wrong=false,passed=false,merged=false;
+ const writes=[],newblob='e'.repeat(40),newblob2='f'.repeat(40),mergeSha='1'.repeat(40);
+ const entries=[{path:files[0].path,type:'blob',mode:'100644',sha:blob}];
+ const updated=files.map((f,i)=>({path:f.path,type:'blob',mode:'100644',sha:i?newblob2:newblob}));
+ const env={STAR_MEMORY:db,STAR_GITHUB_TOKEN:'github_pat_TEST_ONLY',
+ STAR_AI:{fetch:async(_url,init)=>{const m=JSON.parse(init.body).messages;const repair=m.at(-1).content.includes('Repair this proposed file');const create=m[0].content.includes('complete new text file');const first=m[0].content.includes('current path: docs/existing.md');return Response.json({reply:JSON.stringify(repair?(first?{old:'new',new:'fixed'}:{old:'created',new:'fixed new file'}):create?{content:'created'}:{old:'old',new:'new'})});}},
+ STAR_GITHUB_EGRESS:{fetch:async(url,init)=>{
+  const u=new URL(url),p=u.pathname.slice(('/repos/'+repo).length),body=init.body?JSON.parse(init.body):null;
+  if(init.method!=='GET')writes.push(p);
+  const branch=dispatched?'star-ai/edit-'+dispatched.id:'';
+  const pr={number:12,state:merged?'closed':'open',base:{ref:'main',sha:base},head:{ref:branch,sha:head,repo:{full_name:repo}},merged};
+  if(p==='/git/ref/heads/main')return Response.json({object:{sha:main}});
+  if(p==='/git/trees/'+base)return Response.json({tree:entries});
+  if(p==='/git/trees/'+head||p==='/git/trees/'+mergeSha)return Response.json({tree:updated});
+  if(p.startsWith('/contents/')){const name=p.slice(10),isNew=name===files[1].path,ref=u.searchParams.get('ref');const value=ref===base?'old':isNew?'created':wrong?'unexpected':'new';const sha=ref===base?blob:isNew?newblob2:newblob;return Response.json({type:'file',encoding:'base64',sha,size:value.length,content:encodeText(value)});}
+  if(p==='/dispatches'&&init.method==='POST'){assert.equal(body.event_type,'star-ai-v2-approved-edit');dispatched=validatePayload(body.client_payload);return new Response(null,{status:204});}
+  if(p==='/pulls'&&init.method==='GET')return Response.json(hasPR?[pr]:[]);
+  if(p==='/pulls/12/files')return Response.json([{filename:files[0].path,status:'modified'},{filename:files[1].path,status:'added'}]);
+  if(p==='/pulls/12')return Response.json(pr);
+  if(p==='/actions/workflows/star-ai-developer-v2.yml/runs')return Response.json({workflow_runs:dispatched?[{id:14,display_title:'STAR V2 '+dispatched.id,event:'repository_dispatch',status:'completed',conclusion:'success'}]:[]});
+  if(p.startsWith('/actions/workflows/'))return Response.json({workflow_runs:[{id:p.includes('ci.yml')?15:16,head_sha:head,event:'workflow_dispatch',head_branch:branch,status:'completed',conclusion:passed?'success':'failure'}]});
+  if(/^\/actions\/runs\/\d+\/jobs$/.test(p))return Response.json({jobs:[{name:'web',conclusion:'failure',steps:[{name:'Run npm test',conclusion:'failure'}]}]});
+  if(p==='/pulls/12/merge'&&init.method==='PUT'){assert.equal(body.sha,head);assert.ok(passed);merged=true;main=mergeSha;return Response.json({merged:true,sha:mergeSha});}
+  throw Error('Unexpected '+p);
+ }}};
+ const auth=sub=>async()=>({ok:true,identity:{sub}});
+ const call=(query='',data,sub='owner')=>handleDeveloper({request:new Request(endpoint+query,{...(data?{method:'POST',headers:{origin:root,'content-type':'application/json'},body:JSON.stringify(data)}:{})}),env},auth(sub));
+ try{
+  const proposed=await call('',{action:'plan',task:'Update docs and create a file',files:files.map(({op,path})=>({op,path}))});assert.equal(proposed.status,201);
+  const draft=await proposed.json();assert.deepEqual(draft.files,files);assert.equal(writes.length,0);
+  assert.equal((await call('?action=job&id='+draft.id,undefined,'other')).status,404);
+  assert.equal((await call('',{action:'approve',id:draft.id,approve:true},'other')).status,404);
+  assert.equal((await call('',{action:'approve',id:draft.id,approve:false})).status,409);
+  assert.equal((await (await call('',{action:'approve',id:draft.id,approve:true})).json()).state,'queued');
+  assert.equal((await call('',{action:'approve',id:draft.id,approve:true})).status,409);assert.equal(writes.length,1);
+  assert.equal((await (await call('',{action:'sync',id:draft.id})).json()).state,'queued');
+  hasPR=true;wrong=true;assert.equal((await call('',{action:'sync',id:draft.id})).status,409);wrong=false;
+  assert.equal((await (await call('',{action:'sync',id:draft.id})).json()).state,'pr_open');
+  const status=await (await call('?action=status&id='+draft.id)).json();assert.equal(status.run.id,14);assert.equal(status.checks.length,2);
+  assert.equal((await call('',{action:'merge',id:draft.id,approve:true})).status,409);
+  const repair=await call('',{action:'repair',id:draft.id});assert.equal(repair.status,201);const fixed=await repair.json();assert.equal(fixed.kind,'repair');assert.equal(fixed.repairCount,1);assert.equal(fixed.files[0].after,'fixed');assert.equal(writes.length,1);
+  passed=true;const m=await call('',{action:'merge',id:draft.id,approve:true});assert.equal(m.status,200);assert.equal((await m.json()).mergeSha,mergeSha);assert.equal(writes.length,2);
+  const rollback=await call('',{action:'rollback',id:draft.id});assert.equal(rollback.status,201);const inverse=await rollback.json();assert.equal(inverse.kind,'rollback');assert.equal(inverse.files[0].after,'old');assert.equal(inverse.files[1].op,'delete');assert.equal(writes.length,2);
+  wrong=true;assert.equal((await call('',{action:'rollback',id:draft.id})).status,409);
+ }finally{sql.close();}
+});
