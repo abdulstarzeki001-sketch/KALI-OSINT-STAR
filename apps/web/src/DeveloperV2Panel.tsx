@@ -3,6 +3,7 @@ import './ai-settings.css';
 import './developer-v2.css';
 import './engineering-v3.css';
 import EngineeringV3 from './EngineeringV3';
+import EngineeringOps from './EngineeringOps';
 type Edit={path:string;op:'modify'|'create'|'delete';before:string|null;after:string|null;blob:string|null};
 type Check={workflow:string;status:string;conclusion:string|null;id:number|null};
 type Job={id:string;task:string;state:string;kind:string;files?:Edit[];pr?:number;head?:string;mergeSha?:string;repairCount?:number;run?:{id:number;status:string;conclusion:string}|null;checks?:Check[];created?:number};
@@ -81,6 +82,7 @@ export default function DeveloperV2Panel({initialTask=''}:{initialTask?:string})
  {job.state==='queued'&&<details><summary>استعادة حالة PR معروف</summary><label>رقم Pull Request<input inputMode="numeric" value={recoverPR} onChange={e=>setRecoverPR(e.target.value)}/></label><button disabled={busy||!/^\d+$/.test(recoverPR)} onClick={()=>void action(async()=>{await api('',{action:'sync',id:job.id,pr:Number(recoverPR)});await fetchStatus(job.id);})}>مطابقة PR مع المهمة</button><small>لا يعيد التنفيذ؛ يتحقق من الفرع والمحتوى المعتمد.</small></details>}
  {job.state==='queued'&&<p>{terminalFailure(job)?'فشل محرك التنفيذ. افتح السجل لمعرفة السبب؛ لا تُعد إرسال نفس المهمة.':'تم تسجيل الطلب؛ انتظر نتيجة GitHub أو حدّث الحالة. لا تُعد إرسال الطلب عند انقطاع الشبكة.'}</p>}
  </article>}
+ <EngineeringOps onJob={id=>void action(async()=>{select(await api('?action=job&id='+encodeURIComponent(id)));await refresh();})} onRunner={()=>document.getElementById('star-agent-runner')?.scrollIntoView({behavior:'smooth',block:'start'})}/>
  <h3>سجل المهام</h3><div className="star-settings-actions"><button disabled={busy} onClick={()=>void action(refresh)}>تحديث السجل</button><label>الحالة <select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">الكل</option>{Object.entries(stateLabels).map(([v,l])=><option value={v} key={v}>{l}</option>)}</select></label></div>
  <div className="dev-v2-history">{jobs.filter(j=>filter==='all'||j.state===filter).map(j=><button key={j.id} disabled={busy} aria-current={job?.id===j.id?'true':undefined} onClick={()=>void action(async()=>select(await api('?action=job&id='+encodeURIComponent(j.id))))}><strong>{j.task.slice(0,100)}</strong><small>{stateLabels[j.state]||j.state} {j.created?' · '+new Date(j.created).toLocaleString('ar-IQ'):''}</small></button>)}</div>
  <small>المتابعة تقرأ حالة GitHub فقط ولا تكرر أوامر الكتابة. الإصلاح مقترح يستند إلى بيانات CI المحدودة؛ لا تنفيذ Shell حر أو تعديل أسرار أو workflows. يتطلب النشر اعتماداً منفصلاً.</small>

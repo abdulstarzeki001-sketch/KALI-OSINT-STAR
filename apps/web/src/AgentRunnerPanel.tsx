@@ -90,7 +90,7 @@ export default function AgentRunnerPanel(){
   }catch(e){setError(e instanceof Error?e.message:'فشل الإجراء');}
   finally{setApprovalBusy(false);}
  }
- return <section className="agent-runner-page page-animate" dir="rtl">
+ return <section id="star-agent-runner" className="agent-runner-page page-animate" dir="rtl">
   <div className="runner-header">
    <span className="eyebrow">STAR AI / CONTROLLED EXECUTION</span>
    <h1>STAR Agent Runner <span>وكيل تنفيذ حقيقي</span></h1>
