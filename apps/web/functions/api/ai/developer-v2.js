@@ -3,7 +3,7 @@ import {ownerKey} from '../../../durable-memory.js';
 import {readProfile} from '../../../ai-settings.js';
 import {REPO,github,githubFailure,shaOK,decodeText,checkEvidence,tokenState,GitHubError,sensitive} from '../../../github-workspace.js';
 import {EVENT,WORKFLOW,uuidOK,branchFor,pathURL,parseTargets,validatePlan,payloadFor,modelEdit,reversePlan,verifyFileList,validText,fileCatalog,smokeFiles} from '../../../developer-v2.js';
-import {inventory,parseRoadmap,roadmapMessages,providerOK} from '../../../engineering-v3.js';
+import {inventory,parseRoadmap,roadmapMessages,providerOK,collectSourceReview,reviewedRoadmapMessages} from '../../../engineering-v3.js';
 import {engineeringCompletion} from './engineering-provider.js';
 const HOST='https://kali-osint-star.pages.dev';
 const json=(v,status=200)=>Response.json(v,{status,headers:{'cache-control':'private, no-store','x-content-type-options':'nosniff'}});
@@ -82,14 +82,22 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
   }
   if(!request.headers.get('content-type')?.includes('application/json'))return json({error:'JSON required'},415);
   const d=await body(request);if(!d||typeof d!=='object')problem('Invalid request');
+  if(d.action==='model_probe'){
+   const provider=d.provider;
+   if(!providerOK(provider)||provider==='star-ai-auto')problem('Choose an explicit provider for diagnostics');
+   const result=await engineeringCompletion(request,env,[{role:'user',content:'Reply with the single word READY. Do not use tools.'}],provider);
+   return json(result.ok?{ok:true,provider:result.model,ms:result.ms,ready:result.reply.trim().toUpperCase()==='READY'}:{ok:false,provider,status:result.status});
+  }
   if(d.action==='roadmap'){
    const provider=d.provider??'llama-cloudflare';
    if(typeof d.task!=='string'||!d.task.trim()||d.task.length>2000||sensitive(d.task)||!providerOK(provider))problem('Invalid roadmap task or provider');
-   const base=await main(env),scan=inventory(await tree(env,base),d.task);
+   const base=await main(env),entries=await tree(env,base),scan=inventory(entries,d.task);
    if(!scan.candidates.length)problem('No eligible files');
-   const result=await engineeringCompletion(request,env,roadmapMessages(d.task,scan),provider);
+   const source=d.reviewSource===true?await collectSourceReview(scan,path=>read(env,path,base,entries)):{reviewed:[],messages:[]};
+   const result=await engineeringCompletion(request,env,reviewedRoadmapMessages(d.task,scan,source),provider);
    if(!result.ok)return json({error:'Planner model unavailable (HTTP '+result.status+')'},503);
    let roadmap;try{roadmap=parseRoadmap(result.reply,scan.candidates);}catch(e){problem('Invalid model roadmap: '+e.message.slice(0,100));}
+   roadmap.sourceReview={requested:d.reviewSource===true,files:source.reviewed};
    const id=crypto.randomUUID(),created=Date.now();
    await db.prepare('INSERT INTO star_engineering_v3(owner,id,task,base_sha,roadmap_json,provider,latency_ms,total_files,eligible_files,created) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(owner,id,d.task,base,JSON.stringify(roadmap),result.model,result.ms,scan.total,scan.eligible,created).run();
    return json({id,task:d.task,base,roadmap,provider:result.model,ms:result.ms,total:scan.total,eligible:scan.eligible,created},201);

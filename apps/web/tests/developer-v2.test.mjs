@@ -81,8 +81,9 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
  const auth=sub=>async()=>({ok:true,identity:{sub}});
  const call=(query='',data,sub='owner')=>handleDeveloper({request:new Request(endpoint+query,{...(data?{method:'POST',headers:{origin:root,'content-type':'application/json'},body:JSON.stringify(data)}:{})}),env},auth(sub));
  try{
-  const planned=await call('',{action:'roadmap',task:'Update existing docs',provider:'llama-cloudflare'});assert.equal(planned.status,201);const road=await planned.json();assert.equal(road.provider,'llama-cloudflare');assert.equal(road.roadmap.stages[0].files[0].path,files[0].path);assert.equal(writes.length,0);
+  const planned=await call('',{action:'roadmap',task:'Update existing docs',provider:'llama-cloudflare',reviewSource:true});assert.equal(planned.status,201);const road=await planned.json();assert.equal(road.provider,'llama-cloudflare');assert.equal(road.roadmap.sourceReview.files.length,2);assert.equal(road.roadmap.sourceReview.files[0].partial,false);assert.equal(road.roadmap.stages[0].files[0].path,files[0].path);assert.equal(writes.length,0);
   assert.equal((await (await call('?action=roadmaps')).json()).roadmaps.length,1);assert.equal((await (await call('?action=roadmaps',undefined,'other')).json()).roadmaps.length,0);
+  const probe=await (await call('',{action:'model_probe',provider:'llama-cloudflare'})).json();assert.equal(probe.ok,true);assert.equal(probe.provider,'llama-cloudflare');assert.equal(writes.length,0);
   const catalog=await (await call('?action=catalog')).json();assert.equal(catalog.files.length,2);
   const smoke=await (await call('',{action:'smoke_plan'})).json();assert.equal(smoke.kind,'smoke');assert.equal(smoke.files.length,2);assert.equal(writes.length,0);
   assert.equal((await call('',{action:'merge',id:smoke.id,approve:true})).status,409);
