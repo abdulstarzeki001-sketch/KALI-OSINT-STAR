@@ -1,0 +1,77 @@
+name: STAR GitHub Actions Live Write Smoke
+on:
+  push:
+    branches:
+      - test/actions-live-write-20261126
+    paths:
+      - .github/workflows/star-live-write-smoke.yml
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: star-live-write-smoke
+  cancel-in-progress: false
+jobs:
+  smoke:
+    if: github.repository == 'abdulstarzeki001-sketch/KALI-OSINT-STAR' && github.ref == 'refs/heads/test/actions-live-write-20261126'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Test authenticated live repository writes on isolated branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { appendFileSync } from 'node:fs';
+          const repo = 'abdulstarzeki001-sketch/KALI-OSINT-STAR';
+          assert.equal(process.env.GITHUB_REPOSITORY, repo);
+          const run = process.env.GITHUB_RUN_ID;
+          const attempt = process.env.GITHUB_RUN_ATTEMPT;
+          assert.match(run, /^\d+$/);
+          assert.match(attempt, /^\d+$/);
+          const branch = 'star-ai/actions-smoke-' + run + '-' + attempt;
+          const path = 'docs/STAR_GITHUB_WORKSPACE.md';
+          const summary = process.env.GITHUB_STEP_SUMMARY;
+          const record = s => { console.log(s); appendFileSync(summary, s+'\n\n'); };
+          async function api(p, method='GET', body) {
+            const response = await fetch('https://api.github.com/repos/'+repo+p,{
+              method, redirect:'error',
+              headers:{authorization:'Bearer '+process.env.GH_TOKEN,accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'STAR-actions-live-smoke',...(body?{'content-type':'application/json'}:{})},
+              ...(body?{body:JSON.stringify(body)}:{})
+            });
+            if(!response.ok) throw Error(method+' '+p.split('?')[0]+' failed HTTP '+response.status);
+            return response.json();
+          }
+          record('Credential: short-lived GitHub Actions GITHUB_TOKEN, NOT STAR_GITHUB_TOKEN.');
+          const info=await api('');
+          assert.equal(info.full_name,repo);
+          const base=(await api('/git/ref/heads/main')).object.sha;
+          assert.match(base,/^[a-f0-9]{40}$/);
+          const f=await api('/contents/'+path+'?ref='+base);
+          assert.equal(f.type,'file'); assert.equal(f.encoding,'base64');
+          assert.match(f.sha,/^[a-f0-9]{40}$/);
+          const original=Buffer.from(f.content,'base64');
+          assert.ok(original.length>0 && original.length<20000);
+          record('PASS: authenticated repository, main ref and document read.');
+          const ref=await api('/git/refs','POST',{ref:'refs/heads/'+branch,sha:base});
+          assert.equal(ref.ref,'refs/heads/'+branch); assert.equal(ref.object.sha,base);
+          record('PASS: created isolated branch '+branch);
+          const content=Buffer.concat([original,Buffer.from('\n\n## STAR GitHub Actions live smoke test\n\nRun '+run+' / attempt '+attempt+'. Documentation-only test; do not merge.\n')]);
+          const saved=await api('/contents/'+path,'PUT',{message:'test: STAR Actions live write smoke (do not merge)',content:content.toString('base64'),sha:f.sha,branch});
+          const head=saved.commit.sha;
+          assert.match(head,/^[a-f0-9]{40}$/);
+          assert.notEqual(head,base);
+          const check=await api('/contents/'+path+'?ref='+head);
+          assert.deepEqual(Buffer.from(check.content,'base64'),content);
+          record('PASS: committed and independently re-read content at '+head);
+          const pr=await api('/pulls','POST',{title:'[DO NOT MERGE] STAR Actions live write smoke '+run,head:branch,base:'main',draft:true,body:'Isolated documentation-only live GitHub Actions token smoke test. No production deployment or merge is authorized. This does not verify the Cloudflare Pages PAT or the live model.'});
+          assert.ok(Number.isInteger(pr.number));
+          assert.equal(pr.head.sha,head); assert.equal(pr.base.ref,'main'); assert.equal(pr.draft,true);
+          const verified=await api('/pulls/'+pr.number);
+          assert.equal(verified.head.sha,head); assert.equal(verified.draft,true);
+          record('PASS: draft PR #'+pr.number+' independently verified.');
+          record('Evidence: '+verified.html_url);
+          record('No merge performed. No Cloudflare PAT or live model tested.');
+          NODE
