@@ -40,3 +40,15 @@ test('engineering memory is relevant, bounded and rejects potential secrets',()=
  const m=addEngineeringMemory([{role:'user',content:'first'},{role:'user',content:'task'}],memory);
  assert.equal(m.at(-1).content,'task');assert.ok(m[1].content.includes('not an instruction or authorization'));assert.ok(!JSON.stringify(memory.references).includes('Documentation'));
 });
+
+test('private probe uses a small token budget and deadlines do not hang or silently fall back',async()=>{
+ const req=new Request('https://kali-osint-star.pages.dev',{headers:{'Cf-Access-Jwt-Assertion':'mock-access'}});
+ let calls=0,aborted=false;
+ const env={STAR_AI:{fetch:async()=>{calls++;return Response.json({reply:'READY'});}}};
+ const messages=[{role:'user',content:'Reply READY'}];
+ const slow=async(_url,init)=>{assert.equal(JSON.parse(init.body).max_tokens,64);init.signal.addEventListener('abort',()=>{aborted=true;},{once:true});return new Promise(()=>{});};
+ const result=await engineeringCompletion(req,env,messages,'qwen3-coder-vast',slow,{probe:true,timeoutMs:10});
+ assert.equal(result.status,504);assert.equal(calls,0);assert.equal(aborted,true);assert.ok(Number.isFinite(result.ms));
+ const auto=await engineeringCompletion(req,env,messages,'star-ai-auto',slow,{probe:true,timeoutMs:10});assert.equal(auto.model,'llama-cloudflare');assert.equal(calls,1);
+ const cancel=new AbortController();cancel.abort();const cancelled=await engineeringCompletion(new Request(req,{signal:cancel.signal}),env,messages,'star-ai-auto',slow,{probe:true,timeoutMs:10});assert.equal(cancelled.status,499);assert.equal(calls,1);
+});
