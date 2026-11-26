@@ -45,9 +45,15 @@ export function validatePayload(p){
  }
  return p;
 }
-export function modelEdit(op,before,reply){
+export function modelEdit(op,before,reply,allowAppend=false){
  if(typeof reply!=='string')throw Error('No model reply');
- if(op==='modify'){const after=applyEdit(before,reply);if(!validText(after))throw Error('Invalid model edit');return after;}
+ if(op==='modify'){
+  const raw=reply.trim().replace(/^\x60{3}(?:json)?\s*/i,'').replace(/\s*\x60{3}$/,'');const p=JSON.parse(raw);
+  if(allowAppend&&p&&Object.keys(p).length===1&&typeof p.append==='string'&&p.append.trim()&&p.append.length<=3500&&validText(before)){
+   const after=before+'\n\n'+p.append.trim()+'\n';if(!validText(after))throw Error('Invalid appended content');return after;
+  }
+  const after=applyEdit(before,reply);if(!validText(after))throw Error('Invalid model edit');return after;
+ }
  const raw=reply.trim().replace(/^\x60{3}(?:json)?\s*/i,'').replace(/\s*\x60{3}$/,'');
  const p=JSON.parse(raw);if(!validText(p?.content))throw Error('Invalid new file');return p.content;
 }

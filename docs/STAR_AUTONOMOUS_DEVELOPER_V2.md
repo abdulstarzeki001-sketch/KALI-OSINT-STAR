@@ -4,3 +4,6 @@ Owner-authenticated multi-file jobs (1–4 files), existing regular text files o
 
 ## Operations console
 The file catalog exposes only allowed regular file metadata to the authenticated owner. The fixed owner-session test prepares two documentation-only operations without a model call; it still requires approval to dispatch, and the API refuses merge for smoke jobs. Draft discard is owner-scoped and never changes GitHub. The console automatically polls selected active jobs while visible (15 seconds, slower on errors), without replaying writes; it recovers stored state after a failed mutation response. This is not a persistent background agent. Use the separate model-generated plan to verify inference and merge/deployment end to end.
+
+## Model response compatibility
+The private AI Worker normalizes plain text, OpenAI-compatible choices and structured JSON object responses. For documentation append-only tasks V2 accepts an explicit append field, preserves every original character, and still requires review and approval. Empty replacement anchors remain invalid. Upstream status codes are exposed without raw model internals.

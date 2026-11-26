@@ -53,3 +53,18 @@ test('existing analyzer remains compatible',async()=>{
  const r=await worker.fetch(new Request('https://star-ai-service.internal/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({report:'This is a synthetic lab record. Build succeeded but no vulnerability scan was run.',question:'حلل النتائج'})}),{AI});
  assert.equal(r.status,200);assert.equal((await r.json()).status,'completed');
 });
+
+test('normalizes real provider reply shapes including structured JSON',async()=>{
+ const messages=[{role:'user',content:'Return JSON only'}];
+ for(const [result,expected] of [
+  [{response:{append:'فقرة جديدة'}},'{"append":"فقرة جديدة"}'],
+  [{response:{old:'old',new:'new'},choices:[{message:{content:'{"old":"old","new":"new"}'}}]},'{"old":"old","new":"new"}'],
+  [{choices:[{message:{content:'valid choices text'}}]},'valid choices text'],
+  [{output:[{content:'legacy output'}]},'legacy output']
+ ]){
+  const res=await worker.fetch(request({mode:'code',messages,stream:false}),{AI:{run:async()=>result}});
+  assert.equal(res.status,200);assert.equal((await res.json()).reply,expected);
+ }
+ const empty=await worker.fetch(request({mode:'code',messages,stream:false}),{AI:{run:async()=>({response:{}})}});
+ assert.equal(empty.status,503);
+});
