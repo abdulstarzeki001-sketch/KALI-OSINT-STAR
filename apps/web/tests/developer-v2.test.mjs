@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {parseTargets,payloadFor,validatePayload,reversePlan,modelEdit,verifyFileList} from '../developer-v2.js';
+import {parseTargets,payloadFor,validatePayload,reversePlan,modelEdit,verifyFileList,fileCatalog,smokeFiles} from '../developer-v2.js';
 import {encodeText} from '../github-workspace.js';
 import {executeApproved} from '../../../scripts/star-developer-v2.mjs';
 import {handleDeveloper} from '../functions/api/ai/developer-v2.js';
@@ -54,7 +54,8 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
  const root='https://kali-osint-star.pages.dev',repo='abdulstarzeki001-sketch/KALI-OSINT-STAR',endpoint=root+'/api/ai/developer-v2';
  let main=base,dispatched=null,hasPR=false,wrong=false,passed=false,merged=false;
  const writes=[],newblob='e'.repeat(40),newblob2='f'.repeat(40),mergeSha='1'.repeat(40);
- const entries=[{path:files[0].path,type:'blob',mode:'100644',sha:blob}];
+ const smokePath='docs/STAR_AUTONOMOUS_DEVELOPER_V2.md';
+ const entries=[{path:files[0].path,type:'blob',mode:'100644',sha:blob,size:3},{path:smokePath,type:'blob',mode:'100644',sha:blob,size:3}];
  const updated=files.map((f,i)=>({path:f.path,type:'blob',mode:'100644',sha:i?newblob2:newblob}));
  const env={STAR_MEMORY:db,STAR_GITHUB_TOKEN:'github_pat_TEST_ONLY',
  STAR_AI:{fetch:async(_url,init)=>{const m=JSON.parse(init.body).messages;const repair=m.at(-1).content.includes('Repair this proposed file');const create=m[0].content.includes('complete new text file');const first=m[0].content.includes('current path: docs/existing.md');return Response.json({reply:JSON.stringify(repair?(first?{old:'new',new:'fixed'}:{old:'created',new:'fixed new file'}):create?{content:'created'}:{old:'old',new:'new'})});}},
@@ -80,6 +81,12 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
  const auth=sub=>async()=>({ok:true,identity:{sub}});
  const call=(query='',data,sub='owner')=>handleDeveloper({request:new Request(endpoint+query,{...(data?{method:'POST',headers:{origin:root,'content-type':'application/json'},body:JSON.stringify(data)}:{})}),env},auth(sub));
  try{
+  const catalog=await (await call('?action=catalog')).json();assert.equal(catalog.files.length,2);
+  const smoke=await (await call('',{action:'smoke_plan'})).json();assert.equal(smoke.kind,'smoke');assert.equal(smoke.files.length,2);assert.equal(writes.length,0);
+  assert.equal((await call('',{action:'merge',id:smoke.id,approve:true})).status,409);
+  assert.equal((await call('',{action:'discard',id:smoke.id,approve:true},'other')).status,404);
+  assert.equal((await (await call('',{action:'discard',id:smoke.id,approve:true})).json()).state,'discarded');
+  assert.equal((await call('',{action:'approve',id:smoke.id,approve:true})).status,409);assert.equal(writes.length,0);
   const proposed=await call('',{action:'plan',task:'Update docs and create a file',files:files.map(({op,path})=>({op,path}))});assert.equal(proposed.status,201);
   const draft=await proposed.json();assert.deepEqual(draft.files,files);assert.equal(writes.length,0);
   assert.equal((await call('?action=job&id='+draft.id,undefined,'other')).status,404);
@@ -97,4 +104,10 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
   const rollback=await call('',{action:'rollback',id:draft.id});assert.equal(rollback.status,201);const inverse=await rollback.json();assert.equal(inverse.kind,'rollback');assert.equal(inverse.files[0].after,'old');assert.equal(inverse.files[1].op,'delete');assert.equal(writes.length,2);
   wrong=true;assert.equal((await call('',{action:'rollback',id:draft.id})).status,409);
  }finally{sql.close();}
+});
+
+test('catalog excludes unsafe, oversized, nonregular and missing-size entries; smoke is fixed and preview only',()=>{
+ const entries=new Map([['docs/a.md',{path:'docs/a.md',type:'blob',mode:'100644',sha:blob,size:10}],['docs/b.md',{path:'docs/b.md',type:'blob',mode:'120000',sha:blob,size:10}],['docs/secret.md',{path:'docs/secret.md',type:'blob',mode:'100644',sha:blob,size:1}],['docs/big.md',{path:'docs/big.md',type:'blob',mode:'100644',sha:blob,size:50000}]]);
+ assert.deepEqual(fileCatalog(entries),[{path:'docs/a.md',size:10}]);
+ const plan=smokeFiles({sha:blob,text:'original'},id);assert.equal(plan.length,2);assert.ok(plan[0].after.startsWith('original'));assert.equal(plan[1].path,'docs/v2-owner-check/'+id+'.md');
 });

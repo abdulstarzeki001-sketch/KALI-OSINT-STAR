@@ -65,3 +65,14 @@ export function verifyFileList(files,list){
  const status={create:'added',modify:'modified',delete:'removed'};
  return files.every(f=>list.filter(x=>x.filename===f.path&&x.status===status[f.op]).length===1);
 }
+
+export function fileCatalog(entries){
+ return [...entries.values()].filter(x=>x.type==='blob'&&x.mode==='100644'&&shaOK(x.sha)&&safeV2Path(x.path)&&typeof x.size==='number'&&x.size>0&&x.size<=48000).map(x=>({path:x.path,size:x.size})).sort((a,b)=>a.path.localeCompare(b.path)).slice(0,500);
+}
+export function smokeFiles(old,id){
+ if(!old||!shaOK(old.sha)||!validText(old.text)||!uuidOK(id))throw Error('Invalid smoke fixture');
+ return validatePlan([
+  {path:'docs/STAR_AUTONOMOUS_DEVELOPER_V2.md',op:'modify',blob:old.sha,before:old.text,after:old.text+'\n\n## Owner-session verification (test only)\n'},
+  {path:'docs/v2-owner-check/'+id+'.md',op:'create',blob:null,before:null,after:'# STAR V2 owner-session verification\n\nDocumentation-only isolated integration test. Do not merge.\n'}
+ ]);
+}

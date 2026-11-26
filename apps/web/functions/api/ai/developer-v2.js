@@ -2,7 +2,7 @@ import {verifyAccessRequest,accessFailureStatus} from '../../../access-jwt.js';
 import {ownerKey} from '../../../durable-memory.js';
 import {readProfile} from '../../../ai-settings.js';
 import {REPO,github,githubFailure,shaOK,decodeText,checkEvidence,tokenState,GitHubError,sensitive} from '../../../github-workspace.js';
-import {EVENT,WORKFLOW,uuidOK,branchFor,pathURL,parseTargets,validatePlan,payloadFor,modelEdit,reversePlan,verifyFileList,validText} from '../../../developer-v2.js';
+import {EVENT,WORKFLOW,uuidOK,branchFor,pathURL,parseTargets,validatePlan,payloadFor,modelEdit,reversePlan,verifyFileList,validText,fileCatalog,smokeFiles} from '../../../developer-v2.js';
 const HOST='https://kali-osint-star.pages.dev';
 const json=(v,status=200)=>Response.json(v,{status,headers:{'cache-control':'private, no-store','x-content-type-options':'nosniff'}});
 class InputError extends Error{}
@@ -67,14 +67,20 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
   const lookup=async id=>uuidOK(id)?db.prepare('SELECT * FROM star_developer_v2 WHERE owner=? AND id=?').bind(owner,id).first():null;
   if(request.method==='GET'){
    const id=u.searchParams.get('id'),action=u.searchParams.get('action')||'list';
+   if(action==='catalog'){const base=await main(env);return json({base,files:fileCatalog(await tree(env,base))});}
    if(action==='list'){const rows=await db.prepare('SELECT id,task,state,kind,pr,created FROM star_developer_v2 WHERE owner=? ORDER BY created DESC LIMIT 30').bind(owner).all();return json({jobs:rows.results||[],configured:tokenState(env)==='configured'});}
    const row=await lookup(id);if(!row)return json({error:'Not found'},404);
    if(action==='job')return json(publicRow(row));
-   if(action==='status'){const run=row.state==='draft'?null:await runInfo(env,id);const checks=shaOK(row.head_sha)?await checkEvidence(env,row.head_sha,branchFor(id)):[];return json({...publicRow(row),run,checks});}
+   if(action==='status'){const run=['draft','discarded'].includes(row.state)?null:await runInfo(env,id);const checks=shaOK(row.head_sha)?await checkEvidence(env,row.head_sha,branchFor(id)):[];return json({...publicRow(row),run,checks});}
    return json({error:'Invalid action'},422);
   }
   if(!request.headers.get('content-type')?.includes('application/json'))return json({error:'JSON required'},415);
   const d=await body(request);if(!d||typeof d!=='object')problem('Invalid request');
+  if(d.action==='smoke_plan'){
+   const base=await main(env),entries=await tree(env,base),old=await read(env,'docs/STAR_AUTONOMOUS_DEVELOPER_V2.md',base,entries);
+   const files=smokeFiles(old,crypto.randomUUID());if(entries.has(files[1].path))problem('Test path exists');
+   return json(await save(db,owner,base,'Owner-session verification — do not merge',files,'smoke'),201);
+  }
   if(d.action==='plan'){
    if(typeof d.task!=='string'||!d.task.trim()||d.task.length>2000||sensitive(d.task))problem('Invalid task');
    let targets;try{targets=parseTargets(d.files);}catch(e){problem(e.message);}
@@ -90,6 +96,11 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
   }
   const row=await lookup(d.id);if(!row)return json({error:'Not found'},404);
   const files=parsePlan(row),branch=branchFor(row.id);
+  if(d.action==='discard'){
+   if(d.approve!==true||row.state!=='draft')return json({error:'Only unsubmitted drafts can be discarded'},409);
+   const lock=await db.prepare("UPDATE star_developer_v2 SET state='discarded' WHERE owner=? AND id=? AND state='draft'").bind(owner,row.id).run();if(!lock.meta?.changes)return json({error:'Draft changed'},409);
+   return json({...publicRow(row),state:'discarded'});
+  }
   if(d.action==='rollback'){
    if(row.state!=='merged')return json({error:'Only verified merged jobs can be rolled back'},409);
    const base=await main(env),entries=await tree(env,base),current=Object.create(null);
@@ -98,7 +109,7 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
    return json(await save(db,owner,base,'Rollback '+row.id,inverse,'rollback',row.id),201);
   }
   if(d.action==='repair'){
-   if(row.state!=='pr_open'||row.kind==='rollback'||row.repair_count>=2)return json({error:'Repair unavailable; at most two repair proposals'},409);
+   if(row.state!=='pr_open'||['rollback','smoke'].includes(row.kind)||row.repair_count>=2)return json({error:'Repair unavailable; at most two repair proposals'},409);
    if(await main(env)!==row.base_sha)return json({error:'main changed; create a fresh plan'},409);
    const checks=await checkEvidence(env,row.head_sha,branch);
    const failed=checks.filter(c=>c.status==='completed'&&c.conclusion==='failure'&&Number.isInteger(c.id));
@@ -135,6 +146,7 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
    return json({...publicRow(row),state:'pr_open',pr:pr.number,head:pr.head.sha});
   }
   if(d.action==='merge'){
+   if(row.kind==='smoke')return json({error:'Verification jobs must never be merged'},409);
    if(d.approve!==true||row.state!=='pr_open'||!Number.isInteger(row.pr)||!shaOK(row.head_sha))return json({error:'Separate merge approval required'},409);
    const pr=await github(env,'/pulls/'+row.pr);
    if(pr.head?.sha!==row.head_sha||!await verifyPR(env,row,pr)||await main(env)!==row.base_sha)return json({error:'PR or main changed; review again'},409);
