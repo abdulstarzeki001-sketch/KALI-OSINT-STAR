@@ -58,6 +58,25 @@ async function verifyPR(env,row,pr){
  for(const f of files){const current=await read(env,f.path,pr.head.sha,entries);if(f.after===null?current!==null:current?.text!==f.after)return false;}
  return true;
 }
+
+const stageTask=(stage,index)=>'[Stage '+(index+1)+'] '+stage.task;
+async function stageProgress(db,owner,road){
+ const plan=JSON.parse(road.roadmap_json);
+ const rows=(await db.prepare("SELECT id,task,state,pr,merge_sha,parent_id,kind,created FROM star_developer_v2 WHERE owner=? AND (kind='stage' OR kind='repair' OR kind='rollback') AND parent_id IS NOT NULL ORDER BY created DESC").bind(owner).all()).results||[];
+ return plan.stages.map((stage,index)=>{
+  const root=rows.find(j=>j.kind==='stage'&&j.parent_id===road.id&&j.task===stageTask(stage,index)&&j.state!=='discarded');
+  if(!root)return {index,state:'planned',jobId:null,pr:null};
+  // Follow only the bounded repair lineage. A merged ancestor takes precedence over unused repair proposals.
+  let job=root;
+  for(let n=0;n<2&&job.state!=='merged';n++){
+   const child=rows.find(j=>j.parent_id===job.id&&j.kind==='repair'&&j.state!=='discarded');
+   if(!child)break;job=child;
+  }
+  const reverted=job.state==='merged'&&rows.some(j=>j.kind==='rollback'&&j.parent_id===job.id&&j.state==='merged');
+  return {index,state:reverted?'rolled_back':job.state,jobId:job.id,pr:job.pr,mergeSha:job.merge_sha};
+ });
+}
+
 export async function handleDeveloper({request,env},verify=verifyAccessRequest){
  const u=new URL(request.url),origin=request.headers.get('origin');
  if(u.origin!==HOST||(origin&&origin!==HOST)||request.method==='POST'&&origin!==HOST)return json({error:'Forbidden origin'},403);
@@ -69,6 +88,12 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
   const lookup=async id=>uuidOK(id)?db.prepare('SELECT * FROM star_developer_v2 WHERE owner=? AND id=?').bind(owner,id).first():null;
   if(request.method==='GET'){
    const id=u.searchParams.get('id'),action=u.searchParams.get('action')||'list';
+   if(action==='roadmap_progress'){
+    if(!uuidOK(id))problem('Invalid roadmap ID');
+    const road=await db.prepare('SELECT id,roadmap_json FROM star_engineering_v3 WHERE owner=? AND id=?').bind(owner,id).first();
+    if(!road)return json({error:'Roadmap not found'},404);
+    return json({id,stages:await stageProgress(db,owner,road)});
+   }
    if(action==='roadmaps'){
     const rows=await db.prepare('SELECT id,task,base_sha,roadmap_json,provider,latency_ms,total_files,eligible_files,created FROM star_engineering_v3 WHERE owner=? ORDER BY created DESC LIMIT 15').bind(owner).all();
     return json({roadmaps:(rows.results||[]).map(r=>({id:r.id,task:r.task,base:r.base_sha,roadmap:JSON.parse(r.roadmap_json),provider:r.provider,ms:r.latency_ms,total:r.total_files,eligible:r.eligible_files,created:r.created}))});
@@ -107,6 +132,28 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
    const id=crypto.randomUUID(),created=Date.now();
    await db.prepare('INSERT INTO star_engineering_v3(owner,id,task,base_sha,roadmap_json,provider,latency_ms,total_files,eligible_files,created) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(owner,id,d.task,base,JSON.stringify(roadmap),result.model,result.ms,scan.total,scan.eligible,created).run();
    return json({id,task:d.task,base,roadmap,provider:result.model,ms:result.ms,total:scan.total,eligible:scan.eligible,created},201);
+  }
+  if(d.action==='prepare_stage'){
+   if(!uuidOK(d.roadmapId)||!Number.isInteger(d.index)||d.index<0||d.index>2)problem('Invalid roadmap stage');
+   const road=await db.prepare('SELECT * FROM star_engineering_v3 WHERE owner=? AND id=?').bind(owner,d.roadmapId).first();
+   if(!road)return json({error:'Roadmap not found'},404);
+   const stages=JSON.parse(road.roadmap_json).stages,stage=stages[d.index];
+   if(!stage)problem('Stage not found');
+   const progress=await stageProgress(db,owner,road);
+   if(progress[d.index].jobId){const existing=await lookup(progress[d.index].jobId);return json(publicRow(existing));}
+   if(progress.slice(0,d.index).some(s=>s.state!=='merged'))return json({error:'Previous stages must be merged first'},409);
+   const provider=d.provider??road.provider;if(!providerOK(provider))problem('Invalid provider');
+   const targets=parseTargets(stage.files),base=await main(env),entries=await tree(env,base),profile=await readProfile(db,owner),files=[];
+   for(const target of targets){
+    if(target.op!=='modify')problem('Stage scope requires existing files');
+    const old=await read(env,target.path,base,entries);if(!old)problem('Stage file no longer exists: '+target.path);
+    const task=stage.task+'\nAcceptance: '+stage.acceptance;
+    const after=await proposeOne(env,profile,task,target,old.text,targets.map(x=>x.path),request,provider);
+    files.push({...target,blob:old.sha,before:old.text,after});
+   }
+   try{return json(await save(db,owner,base,stageTask(stage,d.index),files,'stage',road.id),201);}catch(e){
+    const retry=(await stageProgress(db,owner,road))[d.index];if(retry.jobId)return json(publicRow(await lookup(retry.jobId)));throw e;
+   }
   }
   if(d.action==='smoke_plan'){
    const base=await main(env),entries=await tree(env,base),old=await read(env,'docs/STAR_AUTONOMOUS_DEVELOPER_V2.md',base,entries);
