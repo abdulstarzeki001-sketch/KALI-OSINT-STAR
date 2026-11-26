@@ -5,10 +5,10 @@ import {REPO,safePath,shaOK,idOK,applyEdit,encodeText,decodeText,sensitive,githu
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'private, no-store','x-content-type-options':'nosniff'}});
 const pathURL=p=>p.split('/').map(encodeURIComponent).join('/');
 const publicRecord=r=>({id:r.id,path:r.path,task:r.task,before:r.before_text,after:r.after_text,state:r.state,pr:r.pr,head:r.head_sha,created:r.created});
-async function readFile(env,path,ref){
+async function readFile(env,path,ref,maxLength=18000){
  const f=await github(env,'/contents/'+pathURL(path)+'?ref='+ref);
  if(f.type!=='file'||f.encoding!=='base64'||!shaOK(f.sha)||f.size>50000)throw Error('Unsupported file');
- const text=decodeText(f.content);if(text.length>18000||text.includes('\u0000')||sensitive(text))throw Error('File not eligible');
+ const text=decodeText(f.content);if(text.length>maxLength||text.includes('\u0000')||sensitive(text))throw Error('File not eligible');
  return {sha:f.sha,text};
 }
 async function bodyJSON(req){
@@ -71,7 +71,9 @@ export async function handleGitHub({request,env},verify=verifyAccessRequest){
     const runs=await github(env,'/actions/workflows/star-ai-edit.yml/runs?event=repository_dispatch&per_page=30');
     const run=(runs.workflow_runs||[]).find(x=>x.display_title==='STAR edit '+id&&x.event==='repository_dispatch');
     const checks=shaOK(row.head_sha)?await checkEvidence(env,row.head_sha,row.state.startsWith('actions_')?branch:''):[];
-    return json({state:row.state,run:run?{id:run.id,status:run.status,conclusion:run.conclusion}:null,checks,pr:row.pr,head:row.head_sha});
+    let mergeSha=null;
+    if(['merged','actions_merged'].includes(row.state)&&Number.isInteger(row.pr)){const p=await github(env,'/pulls/'+row.pr);if(p.merged===true&&p.head?.sha===row.head_sha&&shaOK(p.merge_commit_sha))mergeSha=p.merge_commit_sha;}
+    return json({state:row.state,run:run?{id:run.id,status:run.status,conclusion:run.conclusion}:null,checks,pr:row.pr,head:row.head_sha,mergeSha});
    }
    if(action==='change'){
     const id=u.searchParams.get('id');if(!idOK(id))return json({error:'Invalid ID'},422);
@@ -126,7 +128,7 @@ export async function handleGitHub({request,env},verify=verifyAccessRequest){
    if(!pr)return json({id:row.id,state:'actions_queued',notice:'PR not yet verified; check Actions status before any retry'});
    const list=await github(env,'/pulls/'+pr.number+'/files?per_page=100');
    if(!Array.isArray(list)||list.length!==1||list[0].filename!==row.path||list[0].status!=='modified')return json({error:'Unexpected PR diff; review manually'},409);
-   const f=await readFile(env,row.path,pr.head.sha);
+   const f=await readFile(env,row.path,pr.head.sha,20000);
    if(f.text!==row.after_text)return json({error:'PR differs from approved preview'},409);
    await db.prepare("UPDATE star_github_changes SET state='actions_pr_open',pr=?,head_sha=? WHERE owner=? AND id=? AND state='actions_queued'").bind(pr.number,pr.head.sha,owner,row.id).run();
    return json({id:row.id,state:'actions_pr_open',pr:pr.number,head:pr.head.sha});

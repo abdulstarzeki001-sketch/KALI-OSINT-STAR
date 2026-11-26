@@ -2,3 +2,5 @@ STAR AI GitHub Workspace at #runtime. Create a fine-grained GitHub PAT limited t
 
 ## Actions executor
 The UI now dispatches only a reviewed single-file proposal using repository_dispatch with the existing Contents-write PAT. The fixed workflow uses a short-lived GITHUB_TOKEN to create an isolated branch, commit the approved bytes, verify the content, open a PR, and dispatch CI and Quality on that exact head branch. Refresh execution to reconcile the single-file PR against the saved bytes. A separate approval and exact-head checks are still required for merge; Cloudflare deploys main. No browser service is needed. Do not include secrets in proposals. Owner authentication is unchanged. Verify actual Actions dispatch and the production deployment separately. Failed or ambiguous dispatches remain queued for manual investigation; never automatically replay writes.
+
+The Cloudflare build emits a metadata-only star-deployment.json containing CF_PAGES_COMMIT_SHA. The UI only reports this specific merge as deployed when that live SHA equals the verified PR merge commit; a later deployment is shown as not confirmed for that exact SHA.
