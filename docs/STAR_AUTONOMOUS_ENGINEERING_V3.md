@@ -13,3 +13,6 @@ Dedicated private scheduled observer reads at most two public GitHub endpoints p
 
 ## V3.4 opt-in engineering memory
 Roadmap generation may use relevant owner notes only when explicitly enabled. Word overlap ranks at most 100 notes; up to four excerpts, 800 characters each and 2,500 total, are sent as advisory untrusted context to the chosen provider. Only reference IDs, category and excerpt lengths are persisted with the plan; notes cannot expand write scope or approve any action. Deleting a note removes its stored row, not prior model outputs or previously generated plans. Owners can remove registry entries without deleting repositories. No new migration or permission changes.
+
+## V3.5 bounded provider response
+Private provider probes request 64 output tokens and enforce a 20-second deadline. Private engineering calls use at most 40 seconds (20 seconds in Auto) and a 1,200-token budget; Cloudflare calls use a 25-second deadline (20 for a probe). Timeouts cover response parsing, report HTTP 504, and record measured failed-probe latency. Explicit Qwen selection never falls back; Auto may fall back on transient failures only, and client cancellation stops further inference. This improves UI resilience, not the remote GPU's performance or availability. Existing service authorization remains unchanged.

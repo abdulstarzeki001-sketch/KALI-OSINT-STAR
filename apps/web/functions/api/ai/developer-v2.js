@@ -110,10 +110,10 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
   if(d.action==='model_probe'){
    const provider=d.provider;
    if(!providerOK(provider)||provider==='star-ai-auto')problem('Choose an explicit provider for diagnostics');
-   const result=await engineeringCompletion(request,env,[{role:'user',content:'Reply with the single word READY. Do not use tools.'}],provider);
+   const result=await engineeringCompletion(request,env,[{role:'user',content:'Reply with the single word READY. Do not use tools.'}],provider,globalThis.fetch,{probe:true});
    const ready=result.ok&&result.reply.trim().toUpperCase()==='READY';
-   const record=result.ok?{ok:true,provider:result.model,ms:result.ms,ready}:{ok:false,provider,status:result.status};
-   await db.prepare('INSERT INTO star_v3_model_probes(owner,id,provider,ok,ready,ms,http_status,created) VALUES(?,?,?,?,?,?,?,?)').bind(owner,crypto.randomUUID(),provider,result.ok?1:0,ready?1:0,result.ok?result.ms:null,result.ok?200:result.status,Date.now()).run();
+   const record=result.ok?{ok:true,provider:result.model,ms:result.ms,ready}:{ok:false,provider,status:result.status,ms:result.ms};
+   await db.prepare('INSERT INTO star_v3_model_probes(owner,id,provider,ok,ready,ms,http_status,created) VALUES(?,?,?,?,?,?,?,?)').bind(owner,crypto.randomUUID(),provider,result.ok?1:0,ready?1:0,Number.isFinite(result.ms)?result.ms:null,result.ok?200:result.status,Date.now()).run();
    await db.prepare('DELETE FROM star_v3_model_probes WHERE owner=? AND id NOT IN (SELECT id FROM star_v3_model_probes WHERE owner=? ORDER BY created DESC,id DESC LIMIT 100)').bind(owner,owner).run();
    return json(record);
   }
