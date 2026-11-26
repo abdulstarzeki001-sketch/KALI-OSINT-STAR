@@ -27,6 +27,7 @@ jobs:
       - run: node --test tests/github-workspace.test.mjs
       - run: node --test tests/developer-v2.test.mjs
       - run: node --test tests/engineering-v3.test.mjs
+      - run: node --test tests/engineering-ops.test.mjs
       - run: npm run test:markdown
       - run: npm run test:ai-core
       - run: npm run test:terminal

@@ -49,7 +49,7 @@ test('route rejects anonymous and cross origin before touching storage',async()=
 
 test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch, exact reconciliation, CI repair and rollback',async()=>{
  const {DatabaseSync}=await import('node:sqlite');const {readFileSync}=await import('node:fs');const sql=new DatabaseSync(':memory:');
- for(const name of ['001','002','003','004','005','006'])sql.exec(readFileSync(new URL('../../../cloudflare/memory/'+name+'.sql',import.meta.url),'utf8'));
+ for(const name of ['001','002','003','004','005','006','007'])sql.exec(readFileSync(new URL('../../../cloudflare/memory/'+name+'.sql',import.meta.url),'utf8'));
  const db={prepare(query){return {bind(...args){const stmt=sql.prepare(query);return {first:async()=>stmt.get(...args)||null,all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})};}};}};
  const root='https://kali-osint-star.pages.dev',repo='abdulstarzeki001-sketch/KALI-OSINT-STAR',endpoint=root+'/api/ai/developer-v2';
  let main=base,dispatched=null,hasPR=false,wrong=false,passed=false,merged=false;
@@ -91,7 +91,7 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
   const stageAfter=await (await call('?action=roadmap_progress&id='+road.id)).json();assert.equal(stageAfter.stages[0].jobId,stageJob.id);assert.equal(stageAfter.stages[0].state,'draft');
   assert.equal((await call('',{action:'discard',id:stageJob.id,approve:true})).status,200);
   assert.equal((await (await call('?action=roadmap_progress&id='+road.id)).json()).stages[0].state,'planned');
-  const probe=await (await call('',{action:'model_probe',provider:'llama-cloudflare'})).json();assert.equal(probe.ok,true);assert.equal(probe.provider,'llama-cloudflare');assert.equal(writes.length,0);
+  const probe=await (await call('',{action:'model_probe',provider:'llama-cloudflare'})).json();assert.equal(probe.ok,true);assert.equal(probe.provider,'llama-cloudflare');assert.equal(sql.prepare('SELECT COUNT(*) AS n FROM star_v3_model_probes').get().n,1);assert.equal(writes.length,0);
   const catalog=await (await call('?action=catalog')).json();assert.equal(catalog.files.length,2);
   const smoke=await (await call('',{action:'smoke_plan'})).json();assert.equal(smoke.kind,'smoke');assert.equal(smoke.files.length,2);assert.equal(writes.length,0);
   assert.equal((await call('',{action:'merge',id:smoke.id,approve:true})).status,409);
