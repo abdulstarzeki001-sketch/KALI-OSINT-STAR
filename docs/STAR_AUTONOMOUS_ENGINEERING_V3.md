@@ -19,3 +19,6 @@ Private provider probes request 64 output tokens and enforce a 20-second deadlin
 
 ## V3.6 observation-assisted reconciliation
 If the branch-filtered PR lookup returns no match, V2 can use an owner-scoped observation no older than one hour as a candidate. It fetches the exact PR again through the authenticated bridge, checks the observed head, branch, repository, base and approved full file contents before transitioning the job. An observation never approves or merges a job. No automatic redispatch. UI status polling continues during transient busy state and still fetches executor status if reconciliation fails. Concurrent state changes are re-read rather than overwritten.
+
+## V3.7 release hardening
+Railway propagates incomplete client disconnects through the request AbortSignal to the configured upstream model. This limits abandoned inference, subject to upstream support; it does not guarantee GPU cancellation or successful inference. The developer API now requires the executor workflow run to match the original approved base SHA as well as the exact job title and dispatch event before using it for status/merge. Exact-head checks, content verification and explicit approval remain required. No new credentials or write scope.

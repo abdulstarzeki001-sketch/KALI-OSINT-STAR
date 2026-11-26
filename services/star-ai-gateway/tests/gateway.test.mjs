@@ -238,3 +238,18 @@ test('passes through SSE responses for clients with streaming enabled',async()=>
   assert.ok(response.headers.get('content-type').startsWith('text/event-stream'));
   assert.equal(await response.text(),event);
 });
+
+test('client cancellation reaches the upstream model and releases a non-streaming slot',async()=>{
+ const controller=new AbortController();let upstreamSignal,started;
+ const ready=new Promise(resolve=>{started=resolve;});
+ let count=0;
+ const handler=createGateway({env:ENV,fetchImpl:async(_url,options)=>{
+  count++;if(count>1)return Response.json(fakeAnswer);
+  upstreamSignal=options.signal;started();
+  return new Promise((_,reject)=>{if(upstreamSignal.aborted)reject(upstreamSignal.reason);else upstreamSignal.addEventListener('abort',()=>reject(upstreamSignal.reason),{once:true});});
+ }});
+ const req=new Request(request('/v1/chat/completions',{model:'qwen-coder',messages:[{role:'user',content:'Test cancellation'}]}),{signal:controller.signal});
+ const pending=handler(req);await ready;controller.abort();
+ const result=await pending;assert.equal(upstreamSignal.aborted,true);assert.equal(result.status,504);
+ assert.equal((await handler(request('/v1/chat/completions',{model:'qwen-coder',messages:[{role:'user',content:'Next request'}]}))).status,200);
+});
