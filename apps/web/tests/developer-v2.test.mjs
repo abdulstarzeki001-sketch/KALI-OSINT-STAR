@@ -52,7 +52,7 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
  for(const name of ['001','002','003','004','005','006','007'])sql.exec(readFileSync(new URL('../../../cloudflare/memory/'+name+'.sql',import.meta.url),'utf8'));
  const db={prepare(query){return {bind(...args){const stmt=sql.prepare(query);return {first:async()=>stmt.get(...args)||null,all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})};}};}};
  const root='https://kali-osint-star.pages.dev',repo='abdulstarzeki001-sketch/KALI-OSINT-STAR',endpoint=root+'/api/ai/developer-v2';
- let main=base,dispatched=null,hasPR=false,wrong=false,passed=false,merged=false;
+ let main=base,dispatched=null,hasPR=false,wrong=false,passed=false,merged=false,hidePRList=false;
  const writes=[],newblob='e'.repeat(40),newblob2='f'.repeat(40),mergeSha='1'.repeat(40);
  const smokePath='docs/STAR_AUTONOMOUS_DEVELOPER_V2.md';
  const entries=[{path:files[0].path,type:'blob',mode:'100644',sha:blob,size:3},{path:smokePath,type:'blob',mode:'100644',sha:blob,size:3}];
@@ -69,7 +69,7 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
   if(p==='/git/trees/'+head||p==='/git/trees/'+mergeSha)return Response.json({tree:updated});
   if(p.startsWith('/contents/')){const name=p.slice(10),isNew=name===files[1].path,ref=u.searchParams.get('ref');const value=ref===base?'old':isNew?'created':wrong?'unexpected':'new';const sha=ref===base?blob:isNew?newblob2:newblob;return Response.json({type:'file',encoding:'base64',sha,size:value.length,content:encodeText(value)});}
   if(p==='/dispatches'&&init.method==='POST'){assert.equal(body.event_type,'star-ai-v2-approved-edit');dispatched=validatePayload(body.client_payload);return new Response(null,{status:204});}
-  if(p==='/pulls'&&init.method==='GET')return Response.json(hasPR?[pr]:[]);
+  if(p==='/pulls'&&init.method==='GET')return Response.json(hasPR&&!hidePRList?[pr]:[]);
   if(p==='/pulls/12/files')return Response.json([{filename:files[0].path,status:'modified'},{filename:files[1].path,status:'added'}]);
   if(p==='/pulls/12')return Response.json(pr);
   if(p==='/actions/workflows/star-ai-developer-v2.yml/runs')return Response.json({workflow_runs:dispatched?[{id:14,display_title:'STAR V2 '+dispatched.id,event:'repository_dispatch',status:'completed',conclusion:'success'}]:[]});
@@ -112,7 +112,17 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
   assert.equal((await call('',{action:'approve',id:draft.id,approve:true})).status,409);assert.equal(writes.length,1);
   assert.equal((await (await call('',{action:'sync',id:draft.id})).json()).state,'queued');
   hasPR=true;assert.equal((await call('',{action:'sync',id:draft.id,pr:12},'other')).status,404);wrong=true;assert.equal((await call('',{action:'sync',id:draft.id})).status,409);wrong=false;
-  assert.equal((await (await call('',{action:'sync',id:draft.id,pr:12})).json()).state,'pr_open');
+  hidePRList=true;
+  const hintOwner=await (await import('../durable-memory.js')).ownerKey({sub:'owner'});
+  const hintSQL="INSERT INTO star_v3_observation(owner,job_id,checked,pr,head,observation) VALUES(?,?,?,?,?,'pr_seen')";
+  sql.prepare(hintSQL).run('other-owner',draft.id,Date.now(),12,head);
+  assert.equal((await (await call('',{action:'sync',id:draft.id})).json()).state,'queued');
+  sql.prepare(hintSQL).run(hintOwner,draft.id,Date.now()-7200000,12,head);
+  assert.equal((await (await call('',{action:'sync',id:draft.id})).json()).state,'queued');
+  sql.prepare('UPDATE star_v3_observation SET checked=? WHERE owner=? AND job_id=?').run(Date.now(),hintOwner,draft.id);
+  wrong=true;assert.equal((await call('',{action:'sync',id:draft.id})).status,409);wrong=false;
+  assert.equal((await (await call('',{action:'sync',id:draft.id})).json()).state,'pr_open');
+  assert.equal(writes.length,1);
   const status=await (await call('?action=status&id='+draft.id)).json();assert.equal(status.run.id,14);assert.equal(status.checks.length,2);
   assert.equal((await call('',{action:'merge',id:draft.id,approve:true})).status,409);
   const repair=await call('',{action:'repair',id:draft.id});assert.equal(repair.status,201);const fixed=await repair.json();assert.equal(fixed.kind,'repair');assert.equal(fixed.repairCount,1);assert.equal(fixed.files[0].after,'fixed');assert.equal(writes.length,1);

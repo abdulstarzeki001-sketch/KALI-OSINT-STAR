@@ -227,11 +227,19 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
    if(row.state!=='queued')return json(publicRow(row));
    if(d.pr!==undefined&&(!Number.isInteger(d.pr)||d.pr<1||d.pr>100000000))problem('Invalid PR number');
    const prs=d.pr===undefined?await github(env,'/pulls?state=open&base=main&head='+encodeURIComponent(REPO.split('/')[0]+':'+branch)+'&per_page=10'):[await github(env,'/pulls/'+d.pr)];
-   const pr=Array.isArray(prs)?prs.find(x=>prMatches(x,row)):null;
+   let pr=Array.isArray(prs)?prs.find(x=>prMatches(x,row)):null;
+   if(!pr&&d.pr===undefined){
+    // Observer metadata is only a hint, never proof or approval. Re-read the PR through the authenticated bridge.
+    const hint=await db.prepare("SELECT pr,head FROM star_v3_observation WHERE owner=? AND job_id=? AND observation='pr_seen' AND checked>=?").bind(owner,row.id,Date.now()-3600000).first();
+    if(Number.isInteger(hint?.pr)&&hint.pr>0&&hint.pr<=100000000&&shaOK(hint.head)){
+     try{const candidate=await github(env,'/pulls/'+hint.pr);if(prMatches(candidate,row)&&candidate.head.sha===hint.head)pr=candidate;}catch(e){if(!(e instanceof GitHubError&&e.status===404))throw e;}
+    }
+   }
    if(d.pr!==undefined&&!pr)return json({error:'PR does not belong to this job'},409);
    if(!pr)return json(publicRow(row));
    if(!await verifyPR(env,row,pr))return json({error:'PR does not match approved preview'},409);
-   await db.prepare("UPDATE star_developer_v2 SET state='pr_open',pr=?,head_sha=? WHERE owner=? AND id=? AND state='queued'").bind(pr.number,pr.head.sha,owner,row.id).run();
+   const result=await db.prepare("UPDATE star_developer_v2 SET state='pr_open',pr=?,head_sha=? WHERE owner=? AND id=? AND state='queued'").bind(pr.number,pr.head.sha,owner,row.id).run();
+   if(!result.meta?.changes){const latest=await lookup(row.id);return json(publicRow(latest));}
    return json({...publicRow(row),state:'pr_open',pr:pr.number,head:pr.head.sha});
   }
   if(d.action==='merge'){

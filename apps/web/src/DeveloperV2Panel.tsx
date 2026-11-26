@@ -25,11 +25,11 @@ export default function DeveloperV2Panel({initialTask=''}:{initialTask?:string})
  async function action(fn:()=>Promise<void>){if(working.current)return;working.current=true;setBusy(true);setError('');setNotice('');try{await fn();}catch(e){setError(e instanceof Error?e.message:'تعذر التنفيذ');}finally{working.current=false;setBusy(false);}}
  useEffect(()=>{void action(async()=>{const r=await api();setJobs(r.jobs);setConfigured(r.configured);const active=r.jobs.find((x:Job)=>['queued','pr_open'].includes(x.state));if(active&&!activeId.current)select(await api('?action=job&id='+encodeURIComponent(active.id)));});},[]);
  async function fetchStatus(id:string,signal?:AbortSignal){
-  await api('',{action:'sync',id},signal);
+  let syncError='';try{await api('',{action:'sync',id},signal);}catch(e){if(signal?.aborted)throw e;syncError=e instanceof Error?e.message:'تعذر مطابقة PR';}
   const j:Job=await api('?action=status&id='+encodeURIComponent(id),undefined,signal);
   const sha=j.state==='merged'?await liveDeployment(signal):'';
   if(signal?.aborted||activeId.current!==id)return;
-  setJob(j);setDeployed(sha);setLastUpdate(Date.now());setPollError('');
+  setJob(j);setDeployed(sha);setLastUpdate(Date.now());setPollError(syncError);
   setJobs(old=>old.map(x=>x.id===id?{...x,state:j.state,pr:j.pr}:x));
  }
  const watched=job?.id,watchState=job?.state,watchDone=!!job&&(!!terminalFailure(job)||!!checksReady(job)&&job.state!=='merged'||job.state==='merged'&&!!job.mergeSha&&job.mergeSha===deployed);
@@ -37,8 +37,8 @@ export default function DeveloperV2Panel({initialTask=''}:{initialTask?:string})
   if(!auto||busy||!watched||!['queued','pr_open','merged'].includes(watchState||'')||watchDone)return;
   const controller=new AbortController();let timer:ReturnType<typeof setTimeout>;let attempts=0;
   async function tick(){
-   if(controller.signal.aborted||!watched||working.current||activeId.current!==watched)return;
-   if(document.visibilityState!=='visible'){timer=setTimeout(tick,15000);return;}
+   if(controller.signal.aborted||!watched||activeId.current!==watched)return;
+   if(working.current||document.visibilityState!=='visible'){timer=setTimeout(tick,15000);return;}
    try{await fetchStatus(watched,controller.signal);attempts=0;}catch(e){if(controller.signal.aborted)return;attempts++;setPollError(e instanceof Error?e.message:'تعذر تحديث الحالة');}
    if(!controller.signal.aborted)timer=setTimeout(tick,attempts?30000:15000);
   }
