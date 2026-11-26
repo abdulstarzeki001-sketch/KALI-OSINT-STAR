@@ -53,12 +53,12 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
  const db={prepare(query){return {bind(...args){const stmt=sql.prepare(query);return {first:async()=>stmt.get(...args)||null,all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})};}};}};
  const root='https://kali-osint-star.pages.dev',repo='abdulstarzeki001-sketch/KALI-OSINT-STAR',endpoint=root+'/api/ai/developer-v2';
  let main=base,dispatched=null,hasPR=false,wrong=false,passed=false,merged=false,hidePRList=false,wrongExecutor=false;
- const stageContexts=[];const writes=[],newblob='e'.repeat(40),newblob2='f'.repeat(40),mergeSha='1'.repeat(40);
+ let modelCalls=0;const stageContexts=[];const writes=[],newblob='e'.repeat(40),newblob2='f'.repeat(40),mergeSha='1'.repeat(40);
  const smokePath='docs/STAR_AUTONOMOUS_DEVELOPER_V2.md';
  const entries=[{path:files[0].path,type:'blob',mode:'100644',sha:blob,size:3},{path:smokePath,type:'blob',mode:'100644',sha:blob,size:3}];
  const updated=files.map((f,i)=>({path:f.path,type:'blob',mode:'100644',sha:i?newblob2:newblob}));
  const env={STAR_MEMORY:db,STAR_GITHUB_TOKEN:'github_pat_TEST_ONLY',
- STAR_AI:{fetch:async(_url,init)=>{const m=JSON.parse(init.body).messages;if(m[0].content.includes('repository planning assistant'))return Response.json({reply:JSON.stringify({summary:'Docs plan',stages:[{title:'Docs',task:'Update docs',acceptance:'CI passes',files:[{path:files[0].path,op:'modify'}]}]})});if(m.some(x=>x.content.startsWith('Original owner roadmap request'))){stageContexts.push(m);}
+ STAR_AI:{fetch:async(_url,init)=>{modelCalls++;const m=JSON.parse(init.body).messages;if(m[0].content.includes('repository planning assistant'))return Response.json({reply:JSON.stringify({summary:'Docs plan',stages:[{title:'Docs',task:'Update docs',acceptance:'CI passes',files:[{path:files[0].path,op:'modify'}]}]})});if(m.some(x=>x.content.startsWith('Original owner roadmap request'))){stageContexts.push(m);}
 const repair=m.at(-1).content.includes('Repair this proposed file');const create=m[0].content.includes('complete new text file');const first=m[0].content.includes('current path: docs/existing.md');return Response.json({reply:JSON.stringify(repair?(first?{old:'new',new:'fixed'}:{old:'created',new:'fixed new file'}):create?{content:'created'}:{old:'old',new:'new'})});}},
  STAR_GITHUB_EGRESS:{fetch:async(url,init)=>{
   const u=new URL(url),p=u.pathname.slice(('/repos/'+repo).length),body=init.body?JSON.parse(init.body):null;
@@ -133,6 +133,17 @@ const repair=m.at(-1).content.includes('Repair this proposed file');const create
   const m=await call('',{action:'merge',id:draft.id,approve:true});assert.equal(m.status,200);assert.equal((await m.json()).mergeSha,mergeSha);assert.equal(writes.length,2);
   const rollback=await call('',{action:'rollback',id:draft.id});assert.equal(rollback.status,201);const inverse=await rollback.json();assert.equal(inverse.kind,'rollback');assert.equal(inverse.files[0].after,'old');assert.equal(inverse.files[1].op,'delete');assert.equal(writes.length,2);
   wrong=true;assert.equal((await call('',{action:'rollback',id:draft.id})).status,409);
+  // Seed a merged stage in this isolated fixture; the actual rollback route must use exact stored bytes.
+  wrong=false;sql.prepare("UPDATE star_developer_v2 SET state='merged',merge_sha=? WHERE owner=? AND id=?").run(mergeSha,ownKey,stageJob.id);
+  const stageMerged=await (await call('?action=roadmap_progress&id='+road.id)).json();assert.equal(stageMerged.stages[0].state,'merged');
+  const priorCalls=modelCalls,priorWrites=writes.length;
+  assert.equal((await call('',{action:'rollback',id:stageJob.id},'other')).status,404);
+  const staged=await call('',{action:'rollback',id:stageJob.id});assert.equal(staged.status,201);const restored=await staged.json();assert.equal(restored.parent,stageJob.id);assert.equal(restored.files[0].after,stageJob.files[0].before);
+  const linked=await (await call('?action=roadmap_progress&id='+road.id)).json();assert.equal(linked.stages[0].rollbackJobId,restored.id);assert.equal(linked.stages[0].rollbackState,'draft');
+  assert.equal(modelCalls,priorCalls);assert.equal(writes.length,priorWrites);
+  wrong=true;assert.equal((await call('',{action:'rollback',id:stageJob.id})).status,409);wrong=false;
+  sql.prepare("UPDATE star_developer_v2 SET state='merged',merge_sha=? WHERE owner=? AND id=?").run(mergeSha,ownKey,restored.id);
+  const reverted=await (await call('?action=roadmap_progress&id='+road.id)).json();assert.equal(reverted.stages[0].state,'rolled_back');assert.equal(reverted.stages[0].rollbackJobId,restored.id);assert.equal(reverted.stages[0].rollbackState,'merged');
  }finally{sql.close();}
 });
 
@@ -148,4 +159,8 @@ test('explicit documentation append preserves every original character and rejec
  assert.throws(()=>modelEdit('modify','original','{"old":"","new":"new"}',true));
  assert.throws(()=>modelEdit('modify','original','{"append":"new","old":"original"}',true));
  assert.throws(()=>modelEdit('modify','original','{"append":"   "}',true));
+});
+
+ test('deterministic rollback removes the entire append including whitespace without model reconstruction',()=>{
+ const original='Original documentation\n\n';const after=modelEdit('modify',original,'{"append":"STAR staged acceptance A"}',true);const f={path:'docs/existing.md',op:'modify',blob,before:original,after};const inverse=reversePlan([f],{[f.path]:{sha:head,text:after}});assert.equal(inverse[0].after,original);assert.equal(inverse[0].before,after);assert.throws(()=>reversePlan([f],{[f.path]:{sha:head,text:after+'unrelated edit'}}));
 });
