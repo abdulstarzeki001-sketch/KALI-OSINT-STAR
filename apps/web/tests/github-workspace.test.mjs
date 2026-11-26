@@ -53,7 +53,7 @@ test('integrated route flow: read, AI draft, scoped approval, branch, commit, PR
  const path='docs/STAR_GITHUB_WORKSPACE.md';
  const before='Original documentation.\n';
  const after=before+'\n## STAR AI Integration Test\n';
- const writes=[];let ciOK=false;let branch='';
+ const writes=[];let ciOK=false;let branch='';let actionsId='',actionsReady=false,actionsMismatch=false;const actionsHead='e'.repeat(40);
  const env={STAR_MEMORY:db,STAR_GITHUB_TOKEN:'github_pat_TEST_ONLY',
  STAR_AI:{fetch:async(url,init)=>{assert.equal(url,'https://star-ai-service.internal/chat');const b=JSON.parse(init.body);assert.equal(b.mode,'code');assert.ok(b.messages.some(m=>m.content.includes(before)));return Response.json({reply:JSON.stringify({old:before,new:after})});}},
  STAR_GITHUB_EGRESS:{fetch:async(url,init)=>{
@@ -65,12 +65,20 @@ test('integrated route flow: read, AI draft, scoped approval, branch, commit, PR
    if(p==='')return Response.json({full_name:repo});
    if(p==='/git/ref/heads/main')return Response.json({object:{sha:base}});
    if(p==='/git/trees/'+base)return Response.json({tree:[{type:'blob',path}]});
-   if(p==='/contents/'+path&&init.method==='GET')return Response.json({type:'file',encoding:'base64',sha:blob,size:before.length,content:encodeText(before)});
+   if(p==='/contents/'+path&&init.method==='GET'){const value=u.searchParams.get('ref')===actionsHead?(actionsMismatch?'Unexpected edit':after):before;return Response.json({type:'file',encoding:'base64',sha:blob,size:value.length,content:encodeText(value)});}
    if(p==='/git/refs'&&init.method==='POST'){assert.equal(data.sha,base);assert.match(data.ref,/^refs\/heads\/star-ai\/edit-/);branch=data.ref.slice(11);return Response.json({ref:data.ref},{status:201});}
    if(p==='/contents/'+path&&init.method==='PUT'){assert.equal(data.branch,branch);assert.notEqual(data.branch,'main');assert.equal(data.sha,blob);assert.equal(decodeText(data.content),after);return Response.json({commit:{sha:head}});}
    if(p==='/pulls'&&init.method==='POST'){assert.equal(data.head,branch);assert.equal(data.base,'main');return Response.json({number:101,head:{sha:head}},{status:201});}
+   if(p==='/dispatches'&&init.method==='POST'){assert.equal(data.event_type,'star-ai-approved-edit');assert.equal(data.client_payload.base,base);assert.equal(data.client_payload.blob,blob);assert.equal(data.client_payload.path,path);assert.equal(decodeText(data.client_payload.content),after);actionsId=data.client_payload.id;return new Response(null,{status:204});}
+   const actionBranch='star-ai/edit-'+actionsId;
+   const actionPR={number:102,state:'open',base:{ref:'main',sha:base},head:{ref:actionBranch,sha:actionsHead,repo:{full_name:repo}}};
+   if(p==='/pulls'&&init.method==='GET')return Response.json(actionsReady?[actionPR]:[]);
+   if(p==='/pulls/102/files')return Response.json([{filename:path,status:'modified'}]);
+   if(p==='/pulls/102')return Response.json(actionPR);
+   if(p==='/actions/workflows/star-ai-edit.yml/runs')return Response.json({workflow_runs:actionsReady?[{id:123,display_title:'STAR edit '+actionsId,event:'repository_dispatch',status:'completed',conclusion:'success'}]:[]});
+   if(p==='/pulls/102/merge'&&init.method==='PUT'){assert.ok(ciOK);assert.equal(data.sha,actionsHead);return Response.json({merged:true,sha:'f'.repeat(40)});}
    if(p==='/pulls/101')return Response.json({number:101,state:'open',base:{ref:'main'},head:{ref:branch,sha:head,repo:{full_name:repo}}});
-   if(p.startsWith('/actions/workflows/'))return Response.json({workflow_runs:[{head_sha:head,event:'pull_request',status:ciOK?'completed':'in_progress',conclusion:ciOK?'success':null}]});
+   if(p.startsWith('/actions/workflows/'))return Response.json({workflow_runs:[u.searchParams.get('event')==='workflow_dispatch'?{head_sha:actionsHead,head_branch:actionBranch,event:'workflow_dispatch',status:ciOK?'completed':'in_progress',conclusion:ciOK?'success':null}:{head_sha:head,event:'pull_request',status:ciOK?'completed':'in_progress',conclusion:ciOK?'success':null}]});
    if(p==='/pulls/101/merge'&&init.method==='PUT'){assert.ok(ciOK);assert.equal(data.sha,head);return Response.json({merged:true,sha:'d'.repeat(40)});}
    throw Error('Unexpected mock operation '+p);
  }}};
@@ -90,5 +98,24 @@ test('integrated route flow: read, AI draft, scoped approval, branch, commit, PR
   assert.equal((await call('',{action:'merge',id:draft.id,approve:true})).status,409);assert.equal(writes.length,3);
   ciOK=true;const merged=await call('',{action:'merge',id:draft.id,approve:true});assert.equal(merged.status,200);assert.equal((await merged.json()).state,'merged');assert.equal(writes.length,4);
   assert.equal(sql.prepare('SELECT state FROM star_github_changes WHERE id=?').get(draft.id).state,'merged');
+  writes.length=0;ciOK=false;
+  const draft2=await (await call('',{action:'propose',path,task:'Append integration heading via Actions'})).json();
+  assert.equal((await call('',{action:'publish_actions',id:draft2.id,approve:false})).status,422);
+  assert.equal((await call('',{action:'publish_actions',id:draft2.id,approve:true},'other-owner')).status,404);
+  const queued=await call('',{action:'publish_actions',id:draft2.id,approve:true});assert.equal(queued.status,200);assert.equal((await queued.json()).state,'actions_queued');assert.equal(writes.length,1);assert.equal(writes[0].path,'/dispatches');
+  assert.equal((await call('',{action:'publish_actions',id:draft2.id,approve:true})).status,409);
+  assert.equal((await (await call('',{action:'sync_actions',id:draft2.id})).json()).state,'actions_queued');
+  assert.equal((await call('',{action:'sync_actions',id:draft2.id},'other-owner')).status,404);
+  actionsReady=true;actionsMismatch=true;assert.equal((await call('',{action:'sync_actions',id:draft2.id})).status,409);actionsMismatch=false;
+  const synced=await (await call('',{action:'sync_actions',id:draft2.id})).json();assert.equal(synced.state,'actions_pr_open');assert.equal(synced.pr,102);
+  const status=await (await call('?action=execution&id='+draft2.id)).json();assert.equal(status.run.id,123);assert.equal(status.checks.length,2);assert.equal(status.checks[0].status,'in_progress');
+  assert.equal((await call('',{action:'merge',id:draft2.id,approve:true})).status,409);assert.equal(writes.length,1);ciOK=true;
+  const m=await (await call('',{action:'merge',id:draft2.id,approve:true})).json();assert.equal(m.state,'actions_merged');assert.equal(writes.length,2);assert.equal(sql.prepare('SELECT state FROM star_github_changes WHERE id=?').get(draft2.id).state,'actions_merged');
  }finally{sql.close();}
+});
+
+test('Actions repository dispatch accepts empty 204 and checks exact dispatch branch',async()=>{
+ const fake='github_pat_TEST_ONLY';const head='c'.repeat(40),branch='star-ai/edit-123';const env={STAR_GITHUB_TOKEN:fake,STAR_GITHUB_EGRESS:{fetch:async(url,init)=>{if(init.method==='POST'){assert.ok(url.endsWith('/dispatches'));return new Response(null,{status:204});}assert.ok(url.includes('event=workflow_dispatch'));return Response.json({workflow_runs:[{head_sha:head,event:'workflow_dispatch',head_branch:branch,status:'completed',conclusion:'success'}]});}}};
+ assert.deepEqual(await github(env,'/dispatches','POST',{event_type:'star-ai-approved-edit'}),{});
+ const {verifyChecks}=await import('../github-workspace.js');assert.equal(await verifyChecks(env,head,branch),true);assert.equal(await verifyChecks(env,head,'different'),false);
 });
