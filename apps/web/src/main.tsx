@@ -13,6 +13,7 @@ const StarAIPanel = React.lazy(() => import('./StarAIPanel'));
 const StarOSPanel = React.lazy(() => import('./StarOSPanel'));
 const AgentChatPanel = React.lazy(() => import('./AgentChatPanel'));
 const GitHubWorkspacePanel = React.lazy(() => import('./GitHubWorkspacePanel'));
+const DeveloperV2Panel = React.lazy(() => import('./DeveloperV2Panel'));
 const AgentRunnerPanel = React.lazy(() => import('./AgentRunnerPanel'));
 const CyberAIPanel = React.lazy(() => import('./CyberAIPanel'));
 const CloudTerminalPanel = React.lazy(() => import('./CloudTerminalPanel'));
@@ -233,7 +234,7 @@ function App(){
  {page==='terminal'&&<React.Suspense fallback={<div className="report-panel" role="status">جارٍ تحميل الترمنال...</div>}><CloudTerminalPanel/></React.Suspense>}
  {page==='ai'&&<React.Suspense fallback={<div role="status" className="report-panel" aria-live="polite">جارٍ تحميل STAR AI...</div>}><StarAIPanel/></React.Suspense>}
  {page==='agent'&&<React.Suspense fallback={<div role="status" className="report-panel" aria-live="polite">جارٍ تجهيز AI Agent...</div>}><AgentChatPanel/></React.Suspense>}
-  {page==='runtime'&&<React.Suspense fallback={<div role="status" className="report-panel" aria-live="polite">جارٍ تجهيز STAR Agent Runner...</div>}><AgentRunnerPanel/><GitHubWorkspacePanel/></React.Suspense>}
+  {page==='runtime'&&<React.Suspense fallback={<div role="status" className="report-panel" aria-live="polite">جارٍ تجهيز STAR Agent Runner...</div>}><DeveloperV2Panel/><AgentRunnerPanel/><GitHubWorkspacePanel/></React.Suspense>}
   {page==='cyber'&&<React.Suspense fallback={<div role="status" className="report-panel" aria-live="polite">جارٍ تجهيز Cyber AI...</div>}><CyberAIPanel/></React.Suspense>}
   {page==='settings'&&<><React.Suspense fallback={<div role="status">جارٍ تحميل إعدادات الذكاء...</div>}><AISettingsPanel/></React.Suspense><div className="page-title page-animate"><span className="eyebrow">SYSTEM SETTINGS</span><h1>إعدادات مساحة العمل</h1><p>المختبرات والمفضلة محفوظة في المتصفح؛ أما نتائج التدريب المصححة فتحفظ على Railway وتُقرأ عند تسجيل الدخول.</p></div><div className="settings-panel page-animate"><div><strong>حالة API المحلية</strong><p>{api==='online'?'الاتصال بخادم FastAPI ناجح':'لم يتصل المتصفح بخادم FastAPI'}</p></div><div><strong>STAR Terminal</strong><p>ترمنال حقيقي داخل Railway، يتطلب Cloudflare Access والضغط على اتصال. نتائج التمارين تُصحّح في الخادم.</p></div><div><strong>حفظ البيانات</strong><p>localStorage داخل المتصفح الحالي</p></div><button className="danger-action" onClick={()=>{if(confirm('حذف المختبرات والمفضلة المحلية فقط؟ نتائج التدريب الموثقة في Railway لن تُحذف.')){setLabs([]);setFavorites([]);show('تم مسح البيانات المحلية فقط')}}}>مسح البيانات المحلية</button></div></>}
  </main><footer>© KALI-OSINT-STAR · AUTHORIZED LABS ONLY · BUILT FOR DEFENSIVE RESEARCH</footer></div>

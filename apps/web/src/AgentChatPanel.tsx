@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import type {FormEvent,KeyboardEvent} from 'react';
 import DurableMemoryPanel,{memoryWrite} from './DurableMemoryPanel';
 import SafeMarkdown from './SafeMarkdown';
+import DeveloperV2Panel from './DeveloperV2Panel';
 import {CHAT_MODELS,AUTO_MODEL,CLOUD_MODEL,PRIVATE_MODEL} from './ai-models';
 import type {ChatModel} from './ai-models';
 import './agent-chat.css';
@@ -72,6 +73,7 @@ export default function AgentChatPanel(){
  const [cloudMemory,setCloudMemory]=useState(()=>{try{return localStorage.getItem('star-cloud-memory-opt-in')==='yes';}catch{return false;}});
  const [memoryError,setMemoryError]=useState('');
  const [draft,setDraft]=useState('');
+ const [developerTask,setDeveloperTask]=useState<string|null>(null);
  const [attachment,setAttachment]=useState<Attachment|null>(null);
  const [busy,setBusy]=useState(false);
  const [connected,setConnected]=useState(false);
@@ -306,6 +308,7 @@ export default function AgentChatPanel(){
        </div>
        <div className="agent-send-buttons">
         {busy&&<button type="button" className="agent-stop" onClick={()=>abortRef.current?.abort()}>■ إيقاف</button>}
+        <button type="button" className="agent-secondary" disabled={busy||!draft.trim()} onClick={()=>setDeveloperTask(draft)}>إرسال للمطور V2</button>
         <button className="agent-primary" disabled={busy||(!draft.trim()&&!attachment)} type="submit">إرسال <span>↑</span></button>
        </div>
       </div>
@@ -314,6 +317,7 @@ export default function AgentChatPanel(){
     </div>
    </main>
   </div>
+  {developerTask!==null&&<DeveloperV2Panel initialTask={developerTask}/>}
   <div className="agent-tool-drawer">
    <button type="button" className="agent-tool-toggle" aria-expanded={showTools} onClick={()=>setShowTools(s=>!s)}>
     <strong>⌘ أداة AI Agent: جرد أدوات Railway</strong><span>{showTools?'إخفاء −':'فتح ＋'}</span>
