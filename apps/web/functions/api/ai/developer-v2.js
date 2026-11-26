@@ -44,9 +44,9 @@ async function save(db,owner,base,task,files,kind='edit',parent=null,count=0){
  await db.prepare("INSERT INTO star_developer_v2(owner,id,task,state,base_sha,files_json,kind,parent_id,repair_count,created) VALUES(?,?,?,'draft',?,?,?,?,?,?)").bind(owner,id,task,base,JSON.stringify(files),kind,parent,count,created).run();
  return {id,task,state:'draft',base,files,kind,parent,repairCount:count,created};
 }
-async function runInfo(env,id){
+async function runInfo(env,id,base){
  const result=await github(env,'/actions/workflows/'+WORKFLOW+'/runs?event=repository_dispatch&per_page=100');
- const run=(result.workflow_runs||[]).find(x=>x.display_title==='STAR V2 '+id&&x.event==='repository_dispatch');
+ const run=(result.workflow_runs||[]).find(x=>x.display_title==='STAR V2 '+id&&x.event==='repository_dispatch'&&x.head_sha===base);
  return run?{id:run.id,status:run.status,conclusion:run.conclusion}:null;
 }
 function prMatches(p,row){return p&&p.base?.ref==='main'&&p.head?.ref===branchFor(row.id)&&p.head?.repo?.full_name===REPO&&shaOK(p.head?.sha)&&Number.isInteger(p.number);}
@@ -102,7 +102,7 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
    if(action==='list'){const rows=await db.prepare('SELECT id,task,state,kind,pr,created FROM star_developer_v2 WHERE owner=? ORDER BY created DESC LIMIT 30').bind(owner).all();return json({jobs:rows.results||[],configured:tokenState(env)==='configured'});}
    const row=await lookup(id);if(!row)return json({error:'Not found'},404);
    if(action==='job')return json(publicRow(row));
-   if(action==='status'){const run=['draft','discarded'].includes(row.state)?null:await runInfo(env,id);const checks=shaOK(row.head_sha)?await checkEvidence(env,row.head_sha,branchFor(id)):[];return json({...publicRow(row),run,checks});}
+   if(action==='status'){const run=['draft','discarded'].includes(row.state)?null:await runInfo(env,id,row.base_sha);const checks=shaOK(row.head_sha)?await checkEvidence(env,row.head_sha,branchFor(id)):[];return json({...publicRow(row),run,checks});}
    return json({error:'Invalid action'},422);
   }
   if(!request.headers.get('content-type')?.includes('application/json'))return json({error:'JSON required'},415);
@@ -249,7 +249,7 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
    if(pr.head?.sha!==row.head_sha||!await verifyPR(env,row,pr)||await main(env)!==row.base_sha)return json({error:'PR or main changed; review again'},409);
    const checks=await checkEvidence(env,row.head_sha,branch);
    if(checks.length!==2||checks.some(c=>c.status!=='completed'||c.conclusion!=='success'))return json({error:'Exact-head CI and Quality must pass'},409);
-   const run=await runInfo(env,row.id);if(run?.status!=='completed'||run.conclusion!=='success')return json({error:'Executor has not completed successfully'},409);
+   const run=await runInfo(env,row.id,row.base_sha);if(run?.status!=='completed'||run.conclusion!=='success')return json({error:'Executor has not completed successfully'},409);
    const merged=await github(env,'/pulls/'+row.pr+'/merge','PUT',{sha:row.head_sha,merge_method:'squash'});
    if(!merged.merged||!shaOK(merged.sha))return json({error:'Merge not verified'},409);
    await db.prepare("UPDATE star_developer_v2 SET state='merged',merge_sha=? WHERE owner=? AND id=? AND state='pr_open'").bind(merged.sha,owner,row.id).run();

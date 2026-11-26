@@ -167,14 +167,14 @@ function chatRequest(data,models,allowReview=false) {
     max_tokens:maxTokens
   }};
 }
-async function invokeProvider(model,body,fetchImpl) {
+async function invokeProvider(model,body,fetchImpl,clientSignal) {
   let upstream;
   try {
     upstream=await fetchImpl(model.baseUrl+'/chat/completions',{
       method:'POST',
       headers:{'content-type':'application/json','authorization':'Bearer '+model.key},
       body:JSON.stringify(body),
-      signal:AbortSignal.timeout(100_000),
+      signal:AbortSignal.any([clientSignal,AbortSignal.timeout(100_000)]),
       redirect:'error'
     });
   }catch(error){
@@ -260,7 +260,7 @@ export function createGateway({env=process.env,fetchImpl=globalThis.fetch,now=()
     if(checked.error)return checked.error;
     inflight++;
     try{
-      const result=await invokeProvider(checked.model,checked.body,fetchImpl);
+      const result=await invokeProvider(checked.model,checked.body,fetchImpl,request.signal);
       if(pathname!=='/v1/security/review'||!result.ok)return result;
       const out=await result.json();
       return json({model:checked.model.id,analysis:out.choices?.[0]?.message?.content||'',
