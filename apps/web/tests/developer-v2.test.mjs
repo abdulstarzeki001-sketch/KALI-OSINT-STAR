@@ -81,8 +81,13 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
  const auth=sub=>async()=>({ok:true,identity:{sub}});
  const call=(query='',data,sub='owner')=>handleDeveloper({request:new Request(endpoint+query,{...(data?{method:'POST',headers:{origin:root,'content-type':'application/json'},body:JSON.stringify(data)}:{})}),env},auth(sub));
  try{
-  const planned=await call('',{action:'roadmap',task:'Update existing docs',provider:'llama-cloudflare',reviewSource:true});assert.equal(planned.status,201);const road=await planned.json();assert.equal(road.provider,'llama-cloudflare');assert.equal(road.roadmap.sourceReview.files.length,2);assert.equal(road.roadmap.sourceReview.files[0].partial,false);assert.equal(road.roadmap.stages[0].files[0].path,files[0].path);assert.equal(writes.length,0);
+  const memoryId='11111111-1111-1111-1111-111111111111';
+  const ownKey=await (await import('../durable-memory.js')).ownerKey({sub:'owner'});
+  sql.prepare('INSERT INTO star_v3_notes(owner,id,category,note,created) VALUES(?,?,?,?,?)').run(ownKey,memoryId,'decision','Update existing docs carefully',1);
+  sql.prepare('INSERT INTO star_v3_notes(owner,id,category,note,created) VALUES(?,?,?,?,?)').run('other-owner','22222222-2222-2222-2222-222222222222','fix','Update existing docs other private context',2);
+  const planned=await call('',{action:'roadmap',task:'Update existing docs',provider:'llama-cloudflare',reviewSource:true,useMemory:true});assert.equal(planned.status,201);const road=await planned.json();assert.equal(road.provider,'llama-cloudflare');assert.deepEqual(road.roadmap.memoryReview.references.map(n=>n.id),[memoryId]);assert.equal(road.roadmap.sourceReview.files.length,2);assert.equal(road.roadmap.sourceReview.files[0].partial,false);assert.equal(road.roadmap.stages[0].files[0].path,files[0].path);assert.equal(writes.length,0);
   assert.equal((await (await call('?action=roadmaps')).json()).roadmaps.length,1);assert.equal((await (await call('?action=roadmaps',undefined,'other')).json()).roadmaps.length,0);
+  const without=await (await call('',{action:'roadmap',task:'Update existing docs',provider:'llama-cloudflare'})).json();assert.equal(without.roadmap.memoryReview.requested,false);assert.equal(without.roadmap.memoryReview.references.length,0);
   const stageBefore=await (await call('?action=roadmap_progress&id='+road.id)).json();assert.equal(stageBefore.stages[0].state,'planned');
   assert.equal((await call('?action=roadmap_progress&id='+road.id,undefined,'other')).status,404);
   assert.equal((await call('',{action:'prepare_stage',roadmapId:road.id,index:0},'other')).status,404);

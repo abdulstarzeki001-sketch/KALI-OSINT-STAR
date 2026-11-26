@@ -24,7 +24,7 @@ export async function handleOps({request,env},verify=verifyAccessRequest,fetcher
  try{
   if(request.method==='GET'){
    const [notes,probes,projects,observations,heartbeat]=await Promise.all([
-    db.prepare('SELECT id,category,note,created FROM star_v3_notes WHERE owner=? ORDER BY created DESC LIMIT 50').bind(owner).all(),
+    db.prepare('SELECT id,category,note,created FROM star_v3_notes WHERE owner=? ORDER BY created DESC LIMIT 100').bind(owner).all(),
     db.prepare('SELECT provider,ok,ready,ms,http_status,created FROM star_v3_model_probes WHERE owner=? ORDER BY created DESC LIMIT 50').bind(owner).all(),
     db.prepare('SELECT repo,description,branch,checked FROM star_v3_projects WHERE owner=? ORDER BY checked DESC LIMIT 10').bind(owner).all(),
     db.prepare("SELECT o.job_id,o.checked,o.executor_id,o.executor_status,o.executor_conclusion,o.pr,o.head,o.observation,j.state FROM star_v3_observation o JOIN star_developer_v2 j ON j.owner=o.owner AND j.id=o.job_id WHERE o.owner=? ORDER BY o.checked DESC LIMIT 20").bind(owner).all(),
@@ -40,6 +40,16 @@ export async function handleOps({request,env},verify=verifyAccessRequest,fetcher
    if(!categories.includes(d.category)||!noteOK(d.note))return json({error:'Invalid note or possible credential'},422);
    const id=crypto.randomUUID(),created=Date.now();const saved=await db.prepare('INSERT INTO star_v3_notes(owner,id,category,note,created) SELECT ?,?,?,?,? WHERE (SELECT COUNT(*) FROM star_v3_notes WHERE owner=?)<100').bind(owner,id,d.category,d.note.trim(),created,owner).run();
    if(!saved.meta?.changes)return json({error:'Note limit reached'},409);return json({id,created},201);
+  }
+  if(d?.action==='delete_note'){
+   if(typeof d.id!=='string'||!/^[a-f0-9-]{36}$/.test(d.id)||d.confirm!==true)return json({error:'Explicit note deletion required'},422);
+   const result=await db.prepare('DELETE FROM star_v3_notes WHERE owner=? AND id=?').bind(owner,d.id).run();
+   return result.meta?.changes?json({deleted:true}):json({error:'Note not found'},404);
+  }
+  if(d?.action==='remove_project'){
+   if(!repoOK(d.repo)||d.confirm!==true)return json({error:'Explicit registry removal required'},422);
+   const result=await db.prepare('DELETE FROM star_v3_projects WHERE owner=? AND repo=?').bind(owner,d.repo).run();
+   return result.meta?.changes?json({removed:true}):json({error:'Registry entry not found'},404);
   }
   if(d?.action==='project'){
    if(!repoOK(d.repo))return json({error:'Use owner/repository'},422);
