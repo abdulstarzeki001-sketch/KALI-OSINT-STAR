@@ -53,12 +53,13 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
  const db={prepare(query){return {bind(...args){const stmt=sql.prepare(query);return {first:async()=>stmt.get(...args)||null,all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})};}};}};
  const root='https://kali-osint-star.pages.dev',repo='abdulstarzeki001-sketch/KALI-OSINT-STAR',endpoint=root+'/api/ai/developer-v2';
  let main=base,dispatched=null,hasPR=false,wrong=false,passed=false,merged=false,hidePRList=false,wrongExecutor=false;
- const writes=[],newblob='e'.repeat(40),newblob2='f'.repeat(40),mergeSha='1'.repeat(40);
+ const stageContexts=[];const writes=[],newblob='e'.repeat(40),newblob2='f'.repeat(40),mergeSha='1'.repeat(40);
  const smokePath='docs/STAR_AUTONOMOUS_DEVELOPER_V2.md';
  const entries=[{path:files[0].path,type:'blob',mode:'100644',sha:blob,size:3},{path:smokePath,type:'blob',mode:'100644',sha:blob,size:3}];
  const updated=files.map((f,i)=>({path:f.path,type:'blob',mode:'100644',sha:i?newblob2:newblob}));
  const env={STAR_MEMORY:db,STAR_GITHUB_TOKEN:'github_pat_TEST_ONLY',
- STAR_AI:{fetch:async(_url,init)=>{const m=JSON.parse(init.body).messages;if(m[0].content.includes('repository planning assistant'))return Response.json({reply:JSON.stringify({summary:'Docs plan',stages:[{title:'Docs',task:'Update docs',acceptance:'CI passes',files:[{path:files[0].path,op:'modify'}]}]})});const repair=m.at(-1).content.includes('Repair this proposed file');const create=m[0].content.includes('complete new text file');const first=m[0].content.includes('current path: docs/existing.md');return Response.json({reply:JSON.stringify(repair?(first?{old:'new',new:'fixed'}:{old:'created',new:'fixed new file'}):create?{content:'created'}:{old:'old',new:'new'})});}},
+ STAR_AI:{fetch:async(_url,init)=>{const m=JSON.parse(init.body).messages;if(m[0].content.includes('repository planning assistant'))return Response.json({reply:JSON.stringify({summary:'Docs plan',stages:[{title:'Docs',task:'Update docs',acceptance:'CI passes',files:[{path:files[0].path,op:'modify'}]}]})});if(m.some(x=>x.content.startsWith('Original owner roadmap request'))){stageContexts.push(m);}
+const repair=m.at(-1).content.includes('Repair this proposed file');const create=m[0].content.includes('complete new text file');const first=m[0].content.includes('current path: docs/existing.md');return Response.json({reply:JSON.stringify(repair?(first?{old:'new',new:'fixed'}:{old:'created',new:'fixed new file'}):create?{content:'created'}:{old:'old',new:'new'})});}},
  STAR_GITHUB_EGRESS:{fetch:async(url,init)=>{
   const u=new URL(url),p=u.pathname.slice(('/repos/'+repo).length),body=init.body?JSON.parse(init.body):null;
   if(init.method!=='GET')writes.push(p);
@@ -85,14 +86,16 @@ test('persistent V2 API journey: multi-file draft, owner isolation, one dispatch
   const ownKey=await (await import('../durable-memory.js')).ownerKey({sub:'owner'});
   sql.prepare('INSERT INTO star_v3_notes(owner,id,category,note,created) VALUES(?,?,?,?,?)').run(ownKey,memoryId,'decision','Update existing docs carefully',1);
   sql.prepare('INSERT INTO star_v3_notes(owner,id,category,note,created) VALUES(?,?,?,?,?)').run('other-owner','22222222-2222-2222-2222-222222222222','fix','Update existing docs other private context',2);
-  const planned=await call('',{action:'roadmap',task:'Update existing docs',provider:'llama-cloudflare',reviewSource:true,useMemory:true});assert.equal(planned.status,201);const road=await planned.json();assert.equal(road.provider,'llama-cloudflare');assert.deepEqual(road.roadmap.memoryReview.references.map(n=>n.id),[memoryId]);assert.equal(road.roadmap.sourceReview.files.length,2);assert.equal(road.roadmap.sourceReview.files[0].partial,false);assert.equal(road.roadmap.stages[0].files[0].path,files[0].path);assert.equal(writes.length,0);
+  const originalTask='Update existing docs. Append exactly one literal line: STAR precise marker. No extra heading. Later remove it.';
+  const planned=await call('',{action:'roadmap',task:originalTask,provider:'llama-cloudflare',reviewSource:true,useMemory:true});assert.equal(planned.status,201);const road=await planned.json();assert.equal(road.provider,'llama-cloudflare');assert.deepEqual(road.roadmap.memoryReview.references.map(n=>n.id),[memoryId]);assert.equal(road.roadmap.sourceReview.files.length,2);assert.equal(road.roadmap.sourceReview.files[0].partial,false);assert.equal(road.roadmap.stages[0].files[0].path,files[0].path);assert.equal(writes.length,0);
   assert.equal((await (await call('?action=roadmaps')).json()).roadmaps.length,1);assert.equal((await (await call('?action=roadmaps',undefined,'other')).json()).roadmaps.length,0);
   const without=await (await call('',{action:'roadmap',task:'Update existing docs',provider:'llama-cloudflare'})).json();assert.equal(without.roadmap.memoryReview.requested,false);assert.equal(without.roadmap.memoryReview.references.length,0);
   const stageBefore=await (await call('?action=roadmap_progress&id='+road.id)).json();assert.equal(stageBefore.stages[0].state,'planned');
   assert.equal((await call('?action=roadmap_progress&id='+road.id,undefined,'other')).status,404);
   assert.equal((await call('',{action:'prepare_stage',roadmapId:road.id,index:0},'other')).status,404);
   const stageDraft=await call('',{action:'prepare_stage',roadmapId:road.id,index:0});assert.equal(stageDraft.status,201);const stageJob=await stageDraft.json();assert.equal(stageJob.kind,'stage');assert.equal(stageJob.parent,road.id);assert.equal(writes.length,0);
-  const repeat=await (await call('',{action:'prepare_stage',roadmapId:road.id,index:0})).json();assert.equal(repeat.id,stageJob.id);
+  assert.equal(stageContexts.length,1);const original=stageContexts[0].find(m=>m.content.startsWith('Original owner roadmap request'));assert.equal(original.content.split('\n').slice(1).join('\n'),originalTask);assert.match(stageContexts[0].at(-1).content,/Execute ONLY the current stage, not subsequent stages/);assert.match(stageContexts[0].at(-1).content,/Acceptance: CI passes/);assert.ok(stageContexts[0].every(m=>m.content.length<=5000));
+  const repeat=await (await call('',{action:'prepare_stage',roadmapId:road.id,index:0})).json();assert.equal(repeat.id,stageJob.id);assert.equal(stageContexts.length,1);
   const stageAfter=await (await call('?action=roadmap_progress&id='+road.id)).json();assert.equal(stageAfter.stages[0].jobId,stageJob.id);assert.equal(stageAfter.stages[0].state,'draft');
   assert.equal((await call('',{action:'discard',id:stageJob.id,approve:true})).status,200);
   assert.equal((await (await call('?action=roadmap_progress&id='+road.id)).json()).stages[0].state,'planned');
