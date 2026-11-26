@@ -7,6 +7,3 @@ The file catalog exposes only allowed regular file metadata to the authenticated
 
 ## Model response compatibility
 The private AI Worker normalizes plain text, OpenAI-compatible choices and structured JSON object responses. For documentation append-only tasks V2 accepts an explicit append field, preserves every original character, and still requires review and approval. Empty replacement anchors remain invalid. Upstream status codes are exposed without raw model internals.
-
-
-STAR acceptance 2026-11-26 temporary marker.
