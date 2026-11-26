@@ -33,3 +33,9 @@ test('Workers-compatible manual redirects and no credential forwarding',async()=
  catch(e){assert.deepEqual(githubFailure(e),{code:'GITHUB_REDIRECT',error:'GitHub API redirect refused; credentials were not forwarded',githubStatus:302});}
  assert.equal(count,1);
 });
+
+test('configured bridge routes through service binding, never sends credential to external fallback',async()=>{
+ const fake='github_pat_TEST_ONLY';let called=0;
+ const env={STAR_GITHUB_TOKEN:fake,STAR_GITHUB_EGRESS:{fetch:async(url,init)=>{called++;assert.equal(url,'https://star-github-egress.internal/repos/abdulstarzeki001-sketch/KALI-OSINT-STAR');assert.equal(init.headers.authorization,'Bearer '+fake);return Response.json({full_name:'repo'});}}};
+ assert.equal((await github(env,'','GET',undefined,()=>{throw Error('direct fallback forbidden')})).full_name,'repo');assert.equal(called,1);
+});

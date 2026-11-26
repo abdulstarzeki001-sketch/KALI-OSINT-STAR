@@ -31,16 +31,20 @@ export async function github(env,path,method='GET',body,fetcher=(url,init)=>glob
  const token=state==='configured'?env.STAR_GITHUB_TOKEN.trim():null;
  let response;
  try{
-  response=await fetcher('https://api.github.com/repos/'+REPO+path,{method,redirect:'manual',headers:{accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'STAR-AI-Workspace',...(token?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  const binding=env.STAR_GITHUB_EGRESS;
+  const transport=binding?(url,init)=>binding.fetch(url,init):fetcher;
+  const origin=binding?'https://star-github-egress.internal':'https://api.github.com';
+  response=await transport(origin+'/repos/'+REPO+path,{method,redirect:'manual',headers:{accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'STAR-AI-Workspace',...(token?{authorization:'Bearer '+token}:{}),...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
  }catch{throw new GitHubError('GITHUB_NETWORK');}
  // Workers does not implement redirect:error. Never follow a redirect with a PAT.
  if(response.status>=300&&response.status<400)throw new GitHubError('GITHUB_REDIRECT',response.status);
+ if(response.status===502&&response.headers.get('x-star-egress-error'))throw new GitHubError('GITHUB_BRIDGE_NETWORK',502);
  if(!response.ok)throw new GitHubError('GITHUB_HTTP',response.status);
  try{return await response.json();}catch{throw new GitHubError('GITHUB_JSON');}
 }
 export function githubFailure(e){
  if(!(e instanceof GitHubError))return {code:'WORKSPACE_ERROR',error:'Workspace operation failed; run the connection diagnostic'};
- const messages={TOKEN_MISSING:'GitHub write token not configured',TOKEN_FORMAT:'GitHub secret has an invalid PAT format; copy the generated token, not its name',GITHUB_NETWORK:'Could not reach GitHub API from Cloudflare',GITHUB_REDIRECT:'GitHub API redirect refused; credentials were not forwarded',GITHUB_JSON:'GitHub API returned an invalid JSON response',GITHUB_HTTP:'GitHub API rejected the request (HTTP '+e.status+')'};
+ const messages={TOKEN_MISSING:'GitHub write token not configured',TOKEN_FORMAT:'GitHub secret has an invalid PAT format; copy the generated token, not its name',GITHUB_NETWORK:'Could not reach GitHub API from Cloudflare',GITHUB_BRIDGE_NETWORK:'Private GitHub bridge could not reach GitHub API',GITHUB_REDIRECT:'GitHub API redirect refused; credentials were not forwarded',GITHUB_JSON:'GitHub API returned an invalid JSON response',GITHUB_HTTP:'GitHub API rejected the request (HTTP '+e.status+')'};
  return {code:e.code,error:messages[e.code]||'GitHub operation failed',...(e.status?{githubStatus:e.status}:{})};
 }
 export async function verifyChecks(env,head){

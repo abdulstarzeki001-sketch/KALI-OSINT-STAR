@@ -28,7 +28,7 @@ export async function handleGitHub({request,env},verify=verifyAccessRequest){
   if(request.method==='GET'){
    const action=u.searchParams.get('action')||'status';
    if(action==='diagnose'){
-    const checks={access:'ok',storage:'unknown',token:tokenState(env),repository:'not_tested',main:'not_tested',tree:'not_tested'};
+    const checks={access:'ok',storage:'unknown',token:tokenState(env),transport:env.STAR_GITHUB_EGRESS?'private_worker':'direct',repository:'not_tested',main:'not_tested',tree:'not_tested'};
     try{await db.prepare('SELECT id FROM star_github_changes WHERE owner=? LIMIT 1').bind(owner).all();checks.storage='ok';}catch{checks.storage='error';}
     let failure=null;
     try{
