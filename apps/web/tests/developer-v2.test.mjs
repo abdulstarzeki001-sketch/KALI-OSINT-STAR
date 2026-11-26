@@ -164,3 +164,77 @@ test('explicit documentation append preserves every original character and rejec
  test('deterministic rollback removes the entire append including whitespace without model reconstruction',()=>{
  const original='Original documentation\n\n';const after=modelEdit('modify',original,'{"append":"STAR staged acceptance A"}',true);const f={path:'docs/existing.md',op:'modify',blob,before:original,after};const inverse=reversePlan([f],{[f.path]:{sha:head,text:after}});assert.equal(inverse[0].after,original);assert.equal(inverse[0].before,after);assert.throws(()=>reversePlan([f],{[f.path]:{sha:head,text:after+'unrelated edit'}}));
 });
+
+
+test('V3.11 isolated two-stage acceptance: gated order, concurrent approval, exact inverse and owner isolation',async()=>{
+ const {DatabaseSync}=await import('node:sqlite');const {readFileSync}=await import('node:fs');const {createHash}=await import('node:crypto');const {decodeText}=await import('../github-workspace.js');
+ const sql=new DatabaseSync(':memory:');
+ for(const n of ['001','002','003','004','005','006','007'])sql.exec(readFileSync(new URL('../../../cloudflare/memory/'+n+'.sql',import.meta.url),'utf8'));
+ const db={prepare(query){return {bind(...args){const stmt=sql.prepare(query);return {first:async()=>stmt.get(...args)||null,all:async()=>({results:stmt.all(...args)}),run:async()=>({meta:{changes:Number(stmt.run(...args).changes)}})};}};}};
+ const root='https://kali-osint-star.pages.dev',repo='abdulstarzeki001-sketch/KALI-OSINT-STAR',endpoint=root+'/api/ai/developer-v2';
+ const path='docs/staged-acceptance.md',original='Original documentation.\n\n';
+ const digest=s=>createHash('sha1').update(s).digest('hex');
+ let current=base,active=null,serial=0,modelCalls=0;
+ const snapshots=new Map([[base,original]]),prs=new Map(),runs=new Map(),writes=[];
+ const stages=['Add marker A','Add marker B'].map(task=>({title:task,task,acceptance:'One marker only',files:[{path,op:'modify'}]}));
+ const env={STAR_MEMORY:db,STAR_GITHUB_TOKEN:'github_pat_TEST_ONLY',
+ STAR_AI:{fetch:async(_url,init)=>{modelCalls++;const m=JSON.parse(init.body).messages;const reply=m[0].content.includes('repository planning assistant')?{summary:'Two stages',stages}:{append:m.at(-1).content.includes('Add marker B')?'Marker B':'Marker A'};return Response.json({reply:JSON.stringify(reply)});}},
+ STAR_GITHUB_EGRESS:{fetch:async(url,init)=>{
+  const u=new URL(url),p=u.pathname.slice(('/repos/'+repo).length),body=init.body?JSON.parse(init.body):null;
+  if(init.method!=='GET')writes.push(p);
+  if(p==='/git/ref/heads/main')return Response.json({object:{sha:current}});
+  if(p.startsWith('/git/trees/')){const sha=p.split('/').at(-1),text=snapshots.get(sha);assert.equal(typeof text,'string');return Response.json({tree:[{path,type:'blob',mode:'100644',sha:digest(text),size:Buffer.byteLength(text)}]});}
+  if(p.startsWith('/contents/')){const text=snapshots.get(u.searchParams.get('ref'));assert.equal(p,'/contents/'+path);return Response.json({type:'file',encoding:'base64',sha:digest(text),size:Buffer.byteLength(text),content:encodeText(text)});}
+  if(p==='/dispatches'&&init.method==='POST'){
+   const approved=validatePayload(body.client_payload);assert.equal(approved.base,current);assert.equal(approved.files.length,1);assert.equal(approved.files[0].blob,digest(snapshots.get(current)));
+   const next=decodeText(approved.files[0].content),number=++serial,sha=digest('head-'+number),branch='star-ai/edit-'+approved.id;
+   snapshots.set(sha,next);const pr={number,state:'open',base:{ref:'main',sha:current},head:{ref:branch,sha,repo:{full_name:repo}},merged:false};
+   prs.set(number,pr);runs.set(approved.id,{id:100+number,display_title:'STAR V2 '+approved.id,event:'repository_dispatch',head_sha:current,status:'completed',conclusion:'success'});active=pr;
+   return new Response(null,{status:204});
+  }
+  if(p==='/pulls'&&init.method==='GET')return Response.json([...prs.values()].filter(pr=>pr.state==='open'));
+  if(/^\/pulls\/\d+\/files$/.test(p))return Response.json([{filename:path,status:'modified'}]);
+  if(/^\/pulls\/\d+$/.test(p))return Response.json(prs.get(Number(p.split('/').at(-1))));
+  if(p==='/actions/workflows/star-ai-developer-v2.yml/runs')return Response.json({workflow_runs:[...runs.values()]});
+  if(p.startsWith('/actions/workflows/'))return Response.json({workflow_runs:[{id:p.includes('ci.yml')?201:202,head_sha:active.head.sha,event:'workflow_dispatch',head_branch:active.head.ref,status:'completed',conclusion:'success'}]});
+  if(/^\/pulls\/\d+\/merge$/.test(p)&&init.method==='PUT'){
+   const pr=prs.get(Number(p.split('/')[2]));assert.equal(pr.base.sha,current);assert.equal(body.sha,pr.head.sha);const merged=digest('merge-'+pr.number);snapshots.set(merged,snapshots.get(pr.head.sha));current=merged;pr.state='closed';pr.merged=true;return Response.json({merged:true,sha:merged});
+  }
+  throw Error('Unexpected '+p);
+ }}};
+ const call=(query='',data,sub='owner')=>handleDeveloper({request:new Request(endpoint+query,{...(data?{method:'POST',headers:{origin:root,'content-type':'application/json'},body:JSON.stringify(data)}:{})}),env},async()=>({ok:true,identity:{sub}}));
+ const doMerge=async job=>{
+  assert.equal((await call('',{action:'approve',id:job.id,approve:true},'other')).status,404);
+  const before=writes.length;
+  const approvals=await Promise.all(Array.from({length:8},()=>call('',{action:'approve',id:job.id,approve:true})));
+  assert.equal(approvals.filter(x=>x.status===200).length,1);assert.equal(approvals.filter(x=>x.status===409).length,7);assert.equal(writes.length,before+1);
+  assert.equal((await (await call('',{action:'sync',id:job.id})).json()).state,'pr_open');
+  assert.equal((await call('',{action:'merge',id:job.id,approve:false})).status,409);
+  const response=await call('',{action:'merge',id:job.id,approve:true});assert.equal(response.status,200);assert.equal((await response.json()).state,'merged');assert.equal(writes.length,before+2);
+ };
+ try{
+  const planned=await call('',{action:'roadmap',task:'Add marker A then B to the existing documentation',provider:'llama-cloudflare'});assert.equal(planned.status,201);const road=await planned.json();assert.equal(road.roadmap.stages.length,2);
+  const prepare=index=>call('',{action:'prepare_stage',roadmapId:road.id,index});
+  const progress=async()=>(await (await call('?action=roadmap_progress&id='+road.id)).json()).stages;
+  assert.equal((await prepare(1)).status,409);
+  const one=await (await prepare(0)).json();assert.equal(one.kind,'stage');assert.equal((await prepare(1)).status,409);assert.equal(writes.length,0);
+  await doMerge(one);assert.equal((await progress())[0].state,'merged');
+  const two=await (await prepare(1)).json();assert.equal(two.kind,'stage');assert.equal(two.base,current);assert.equal(two.files[0].before,one.files[0].after);
+  await doMerge(two);assert.deepEqual((await progress()).map(p=>p.state),['merged','merged']);assert.equal(snapshots.get(current),two.files[0].after);
+  assert.equal((await call('',{action:'rollback',id:one.id})).status,409);
+  const count=modelCalls;
+  const undoTwo=await (await call('',{action:'rollback',id:two.id})).json();assert.equal(undoTwo.files[0].after,one.files[0].after);await doMerge(undoTwo);
+  const undoOne=await (await call('',{action:'rollback',id:one.id})).json();assert.equal(undoOne.files[0].after,original);await doMerge(undoOne);
+  assert.equal(snapshots.get(current),original);assert.equal(modelCalls,count);assert.deepEqual((await progress()).map(p=>p.state),['rolled_back','rolled_back']);assert.equal(writes.length,8);
+ }finally{sql.close();}
+});
+
+test('V3.11 bounded stress: 1000 exact Unicode and whitespace restores, 1000 conflicting restores rejected',()=>{
+ const start=performance.now();for(let i=0;i<1000;i++){
+  const before='Doc '+i+' العربية کوردی 🙂\r\n'+' '.repeat(i%7)+'\n'.repeat(i%5+1);
+  const after=modelEdit('modify',before,JSON.stringify({append:'Marker '+i}),true),f={path:'docs/stress.md',op:'modify',blob,before,after};
+  const inverse=reversePlan([f],{[f.path]:{sha:head,text:after}});
+  assert.equal(inverse[0].after,before);assert.throws(()=>reversePlan([f],{[f.path]:{sha:head,text:after+'later change'}}));
+ }
+ console.log('STAR_STRESS exact=1000 conflict_rejected=1000 elapsed_ms='+Math.round(performance.now()-start));
+});
