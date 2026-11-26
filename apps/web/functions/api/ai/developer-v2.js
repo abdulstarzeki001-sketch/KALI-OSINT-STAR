@@ -94,9 +94,15 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
    const base=await main(env),entries=await tree(env,base),scan=inventory(entries,d.task);
    if(!scan.candidates.length)problem('No eligible files');
    const source=d.reviewSource===true?await collectSourceReview(scan,path=>read(env,path,base,entries)):{reviewed:[],messages:[]};
-   const result=await engineeringCompletion(request,env,reviewedRoadmapMessages(d.task,scan,source),provider);
+   const messages=reviewedRoadmapMessages(d.task,scan,source);
+   let result=await engineeringCompletion(request,env,messages,provider);
    if(!result.ok)return json({error:'Planner model unavailable (HTTP '+result.status+')'},503);
-   let roadmap;try{roadmap=parseRoadmap(result.reply,scan.candidates);}catch(e){problem('Invalid model roadmap: '+e.message.slice(0,100));}
+   let roadmap;try{roadmap=parseRoadmap(result.reply,scan.candidates);}catch{
+    // One bounded inference-only retry; never replay repository writes or accept invalid output.
+    result=await engineeringCompletion(request,env,[...messages.slice(0,-1),{role:'user',content:'Validation correction: the previous plan failed validation. Use ONLY existing catalog paths, op=modify, one to three stages and one to four files each. No create, delete or rename. Follow the exact JSON schema.'},messages.at(-1)],provider);
+    if(!result.ok)return json({error:'Planner retry unavailable (HTTP '+result.status+')'},503);
+    try{roadmap=parseRoadmap(result.reply,scan.candidates);}catch(e){problem('Invalid model roadmap: '+e.message.slice(0,100));}
+   }
    roadmap.sourceReview={requested:d.reviewSource===true,files:source.reviewed};
    const id=crypto.randomUUID(),created=Date.now();
    await db.prepare('INSERT INTO star_engineering_v3(owner,id,task,base_sha,roadmap_json,provider,latency_ms,total_files,eligible_files,created) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(owner,id,d.task,base,JSON.stringify(roadmap),result.model,result.ms,scan.total,scan.eligible,created).run();

@@ -28,3 +28,5 @@ test('source review bounds excerpts, excludes secrets and stores only metadata',
  assert.equal(calls.length,4);assert.equal(review.reviewed.length,2);assert.equal(review.reviewed[0].chars,3000);assert.equal(review.reviewed[0].partial,true);assert.ok(!JSON.stringify(review.reviewed).includes('xxxx'));assert.ok(!JSON.stringify(review.messages).includes('PRIVATE KEY'));
  const messages=reviewedRoadmapMessages('Improve docs',scan,review);assert.ok(messages.every(m=>m.content.length<=5000));assert.ok(messages.at(-1).content.includes('Improve docs'));
 });
+
+test('planner contract explicitly disallows creating files',()=>{assert.match(roadmapMessages('documentation',inventory(entries,'documentation'))[0].content,/Never create, rename or delete files/);});
