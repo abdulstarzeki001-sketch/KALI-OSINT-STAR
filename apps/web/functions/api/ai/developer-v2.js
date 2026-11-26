@@ -3,7 +3,7 @@ import {ownerKey} from '../../../durable-memory.js';
 import {readProfile} from '../../../ai-settings.js';
 import {REPO,github,githubFailure,shaOK,decodeText,checkEvidence,tokenState,GitHubError,sensitive} from '../../../github-workspace.js';
 import {EVENT,WORKFLOW,uuidOK,branchFor,pathURL,parseTargets,validatePlan,payloadFor,modelEdit,reversePlan,verifyFileList,validText,fileCatalog,smokeFiles} from '../../../developer-v2.js';
-import {inventory,parseRoadmap,roadmapMessages,providerOK,collectSourceReview,reviewedRoadmapMessages} from '../../../engineering-v3.js';
+import {inventory,parseRoadmap,roadmapMessages,providerOK,collectSourceReview,reviewedRoadmapMessages,selectEngineeringMemory,addEngineeringMemory} from '../../../engineering-v3.js';
 import {engineeringCompletion} from './engineering-provider.js';
 const HOST='https://kali-osint-star.pages.dev';
 const json=(v,status=200)=>Response.json(v,{status,headers:{'cache-control':'private, no-store','x-content-type-options':'nosniff'}});
@@ -123,7 +123,9 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
    const base=await main(env),entries=await tree(env,base),scan=inventory(entries,d.task);
    if(!scan.candidates.length)problem('No eligible files');
    const source=d.reviewSource===true?await collectSourceReview(scan,path=>read(env,path,base,entries)):{reviewed:[],messages:[]};
-   const messages=reviewedRoadmapMessages(d.task,scan,source);
+   const notes=d.useMemory===true?(await db.prepare('SELECT id,category,note,created FROM star_v3_notes WHERE owner=? ORDER BY created DESC LIMIT 100').bind(owner).all()).results||[]:[];
+   const memory=selectEngineeringMemory(d.task,notes);
+   const messages=addEngineeringMemory(reviewedRoadmapMessages(d.task,scan,source),memory);
    let result=await engineeringCompletion(request,env,messages,provider);
    if(!result.ok)return json({error:'Planner model unavailable (HTTP '+result.status+')'},503);
    let roadmap;try{roadmap=parseRoadmap(result.reply,scan.candidates);}catch{
@@ -133,6 +135,7 @@ export async function handleDeveloper({request,env},verify=verifyAccessRequest){
     try{roadmap=parseRoadmap(result.reply,scan.candidates);}catch(e){problem('Invalid model roadmap: '+e.message.slice(0,100));}
    }
    roadmap.sourceReview={requested:d.reviewSource===true,files:source.reviewed};
+   roadmap.memoryReview={requested:d.useMemory===true,references:memory.references};
    const id=crypto.randomUUID(),created=Date.now();
    await db.prepare('INSERT INTO star_engineering_v3(owner,id,task,base_sha,roadmap_json,provider,latency_ms,total_files,eligible_files,created) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(owner,id,d.task,base,JSON.stringify(roadmap),result.model,result.ms,scan.total,scan.eligible,created).run();
    return json({id,task:d.task,base,roadmap,provider:result.model,ms:result.ms,total:scan.total,eligible:scan.eligible,created},201);

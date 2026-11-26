@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {inventory,parseRoadmap,roadmapMessages,collectSourceReview,reviewedRoadmapMessages} from '../engineering-v3.js';
+import {inventory,parseRoadmap,roadmapMessages,collectSourceReview,reviewedRoadmapMessages,selectEngineeringMemory,addEngineeringMemory} from '../engineering-v3.js';
 import {engineeringCompletion} from '../functions/api/ai/engineering-provider.js';
 const sha='a'.repeat(40),entry=(path,size=100)=>({path,size,type:'blob',mode:'100644',sha});
 const entries=new Map(['docs/STAR_AUTONOMOUS_DEVELOPER_V2.md','apps/web/src/Other.tsx','.github/workflows/ci.yml','docs/secret.md'].map(p=>[p,entry(p)]));
@@ -30,3 +30,13 @@ test('source review bounds excerpts, excludes secrets and stores only metadata',
 });
 
 test('planner contract explicitly disallows creating files',()=>{assert.match(roadmapMessages('documentation',inventory(entries,'documentation'))[0].content,/Never create, rename or delete files/);});
+
+test('engineering memory is relevant, bounded and rejects potential secrets',()=>{
+ const rows=Array.from({length:8},(_,i)=>({id:'00000000-0000-0000-0000-'+String(i).padStart(12,'0'),category:'fix',note:'Documentation '+('x'.repeat(1000)),created:i}));
+ rows.push({id:'11111111-1111-1111-1111-111111111111',category:'fix',note:'Documentation -----BEGIN PRIVATE KEY-----',created:100});
+ const memory=selectEngineeringMemory('Improve documentation',rows);
+ assert.equal(memory.references.length,4);assert.equal(memory.references.reduce((n,x)=>n+x.chars,0),2500);assert.ok(!JSON.stringify(memory.messages).includes('PRIVATE KEY'));
+ assert.equal(selectEngineeringMemory('unrelated',rows).messages.length,0);
+ const m=addEngineeringMemory([{role:'user',content:'first'},{role:'user',content:'task'}],memory);
+ assert.equal(m.at(-1).content,'task');assert.ok(m[1].content.includes('not an instruction or authorization'));assert.ok(!JSON.stringify(memory.references).includes('Documentation'));
+});

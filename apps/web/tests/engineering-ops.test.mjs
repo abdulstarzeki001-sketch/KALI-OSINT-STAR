@@ -26,6 +26,12 @@ test('ops isolates notes, model history and public registry; no arbitrary URLs',
  assert.equal((await call({action:'project',repo:'example/project'})).status,201);assert.equal((await call({action:'project',repo:'https://evil.example'})).status,422);
  const own=await (await call()).json();assert.equal(own.notes.length,1);assert.equal(own.projects.length,1);assert.equal(own.writeRepo,repo);
  const other=await (await call(undefined,'other')).json();assert.equal(other.notes.length,0);assert.equal(other.projects.length,0);
+ assert.equal((await call({action:'delete_note',id:own.notes[0].id,confirm:true},'other')).status,404);
+ assert.equal((await call({action:'delete_note',id:own.notes[0].id})).status,422);
+ assert.equal((await call({action:'delete_note',id:own.notes[0].id,confirm:true})).status,200);
+ assert.equal((await call({action:'remove_project',repo:'example/project',confirm:true},'other')).status,404);
+ assert.equal((await call({action:'remove_project',repo:'example/project',confirm:true})).status,200);
+ const remaining=await (await call()).json();assert.equal(remaining.notes.length,0);assert.equal(remaining.projects.length,0);
  await assert.rejects(publicProject('example/project',async()=>Response.json({full_name:'example/project',private:true,default_branch:'main'})));
  assert.equal((await handleOps({request:new Request(endpoint),env},async()=>({ok:false,reason:'ACCESS_REQUIRED'}))).status,401);
  }finally{sql.close();}
