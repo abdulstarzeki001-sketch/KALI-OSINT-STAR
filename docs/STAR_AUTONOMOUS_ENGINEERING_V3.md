@@ -22,3 +22,6 @@ If the branch-filtered PR lookup returns no match, V2 can use an owner-scoped ob
 
 ## V3.7 release hardening
 Railway propagates incomplete client disconnects through the request AbortSignal to the configured upstream model. This limits abandoned inference, subject to upstream support; it does not guarantee GPU cancellation or successful inference. The developer API now requires the executor workflow run to match the original approved base SHA as well as the exact job title and dispatch event before using it for status/merge. Exact-head checks, content verification and explicit approval remain required. No new credentials or write scope.
+
+## V3.8 upstream diagnostics
+Distinguish private Ollama catalog reachability and model presence from generation success. One bounded catalog probe and, only when the expected model is listed, one 64-token inference probe at gateway startup. Both use the existing authorized tailnet route and log only result codes and elapsed time. No GPU configuration change, new credential, public diagnostic endpoint or scheduled paid inference. Live owner acceptance remains: generate a harmless documentation plan, approve and verify exact PR/CI, separately approve merge, verify deployed SHA, then preview rollback and review before approval.

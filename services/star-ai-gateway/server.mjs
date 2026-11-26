@@ -3,7 +3,7 @@ import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {createGateway} from './gateway.mjs';
 import {tailnetProvider} from './tailnet-provider.mjs';
-import {qwenStartupProbe} from './qwen-probe.mjs';
+import {qwenReleaseProbe} from './qwen-probe.mjs';
 
 let gateway;
 let provider;
@@ -42,8 +42,8 @@ server.listen(port,'0.0.0.0',()=>{
   console.log('STAR AI Cyber Gateway listening on '+port);
   if(provider.env.STAR_TAILNET_STATE==='enrolled'){
     // Does not block the health route or expose private network addresses.
-    void qwenStartupProbe(provider)
-      .then(status=>console.log('STAR_QWEN_STARTUP_PROBE result='+status))
-      .catch(()=>console.log('STAR_QWEN_STARTUP_PROBE result=internal_error'));
+    void qwenReleaseProbe(provider,(stage,status,ms)=>{
+      console.log('STAR_QWEN_'+(stage==='catalog'?'CATALOG':'STARTUP')+'_PROBE result='+status+' ms='+ms);
+    }).catch(()=>console.log('STAR_QWEN_STARTUP_PROBE result=internal_error'));
   }
 });

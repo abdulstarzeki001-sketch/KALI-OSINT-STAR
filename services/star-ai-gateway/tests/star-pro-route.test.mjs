@@ -24,3 +24,12 @@ test('unconfigured private route stays disabled', ()=>{
 test('reject non-private provider URL', ()=>{
  assert.throws(()=>tailnetProvider({STAR_TAILNET_OLLAMA_URL:'http://127.0.0.1:11434/v1'}));
 });
+
+test('only fixed private model catalog GET and completion POST use the tailnet proxy',async()=>{
+ const calls=[];
+ const route=tailnetProvider({STAR_TAILNET_OLLAMA_URL:'https://gpu.example.ts.net/v1'},async(url,options)=>{calls.push({url,proxied:!!options.dispatcher});return new Response('{}');});
+ await route.fetchImpl('https://gpu.example.ts.net/v1/models',{method:'GET'});
+ await route.fetchImpl('https://gpu.example.ts.net/v1/chat/completions',{method:'POST'});
+ await route.fetchImpl('https://example.org/v1/models',{method:'GET'});
+ assert.deepEqual(calls.map(c=>c.proxied),[true,true,false]);
+});
