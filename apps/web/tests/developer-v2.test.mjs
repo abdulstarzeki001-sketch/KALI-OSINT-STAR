@@ -111,3 +111,11 @@ test('catalog excludes unsafe, oversized, nonregular and missing-size entries; s
  assert.deepEqual(fileCatalog(entries),[{path:'docs/a.md',size:10}]);
  const plan=smokeFiles({sha:blob,text:'original'},id);assert.equal(plan.length,2);assert.ok(plan[0].after.startsWith('original'));assert.equal(plan[1].path,'docs/v2-owner-check/'+id+'.md');
 });
+
+test('explicit documentation append preserves every original character and rejects ambiguous empty anchors',()=>{
+ assert.equal(modelEdit('modify','original\n','{"append":"فقرة جديدة"}',true),'original\n\n\nفقرة جديدة\n');
+ assert.throws(()=>modelEdit('modify','original','{"append":"new"}'));
+ assert.throws(()=>modelEdit('modify','original','{"old":"","new":"new"}',true));
+ assert.throws(()=>modelEdit('modify','original','{"append":"new","old":"original"}',true));
+ assert.throws(()=>modelEdit('modify','original','{"append":"   "}',true));
+});

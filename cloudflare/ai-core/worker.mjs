@@ -24,6 +24,18 @@ const CHAT_SYSTEM={
  security:"أنت STAR AI Cybersecurity Analyst. ناقش هندسة الشبكات، كشف الثغرات، تحليل السجلات، OWASP، وطرق التحصين بتفصيل مهني. افصل بين الفرضية والدليل. لا تدّع تنفيذ فحص أو الوصول إلى أي نظام.",
  agent:"أنت STAR AI Planning Agent. ساعد على تقسيم المهام إلى مراحل ومخرجات ومعايير قبول. لا تذكر تنفيذ أوامر أو تشغيل أدوات دون نتيجة صريحة. اقترح أداة مناسبة من KALI OSINT STAR لكن تشغيل الترمنال يحتاج إجراء وموافقة منفصلين."
 };
+// Workers AI may return a string, OpenAI-compatible choices, or a parsed JSON object.
+export function modelReply(result){
+ if(typeof result?.response==='string'&&result.response.trim())return result.response;
+ const choice=result?.choices?.[0]?.message?.content;
+ if(typeof choice==='string'&&choice.trim())return choice;
+ if(typeof result?.output?.[0]?.content==='string'&&result.output[0].content.trim())return result.output[0].content;
+ const structured=result?.response;
+ if(structured&&typeof structured==='object'&&!Array.isArray(structured)&&Object.keys(structured).length){
+  return JSON.stringify(structured);
+ }
+ return '';
+}
 async function chat(request,env){
  if(request.method!=="POST")return response({error:"POST only"},405);
  if(!env.AI)return response({error:"Workers AI binding unavailable"},503);
@@ -50,7 +62,7 @@ async function chat(request,env){
    if(!result||typeof result.getReader!=="function")return response({error:"Model did not return a streaming response"},503);
    return new Response(result,{headers:{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","x-star-model":MODEL}});
   }
-  const reply=typeof result?.response==="string"?result.response:typeof result?.output?.[0]?.content==="string"?result.output[0].content:"";
+  const reply=modelReply(result);
   if(!reply.trim())return response({error:"Model returned empty reply"},503);
   return response({status:"completed",model:MODEL,reply:reply.slice(0,24000)});
  }catch{return response({error:"AI inference unavailable; check model access and account quota"},503);}
