@@ -29,7 +29,8 @@ export function tailnetProvider(env, fetchImpl = globalThis.fetch) {
       STAR_PROVIDER_TAILNET_OLLAMA_KEY: 'ollama'
     },
     fetchImpl(url, options) {
-      if (url === baseUrl + '/chat/completions') {
+      if ((url === baseUrl + '/chat/completions' && options?.method === 'POST') ||
+          (url === baseUrl + '/models' && options?.method === 'GET')) {
         return fetchImpl(url, {...options, dispatcher: proxy});
       }
       return fetchImpl(url, options);

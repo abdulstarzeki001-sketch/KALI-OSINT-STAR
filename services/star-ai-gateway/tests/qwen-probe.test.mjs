@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {qwenStartupProbe} from '../qwen-probe.mjs';
+import {qwenStartupProbe,qwenConnectivityProbe,qwenReleaseProbe} from '../qwen-probe.mjs';
 
 const env={STAR_TAILNET_STATE:'enrolled',STAR_TAILNET_OLLAMA_URL:'https://qwen.example.ts.net/v1'};
 const good=new Response(JSON.stringify({choices:[{message:{role:'assistant',content:'STAR_QWEN_ONLINE'}}]}),{
@@ -22,6 +22,7 @@ test('startup verification makes one private, bounded Qwen chat request',async()
   assert.equal(req.opts.headers.authorization,'Bearer ollama');
   assert.equal(JSON.parse(req.opts.body).model,'qwen3-coder:30b');
   assert.equal(JSON.parse(req.opts.body).stream,false);
+  assert.equal(JSON.parse(req.opts.body).max_tokens,64);
   assert.ok(req.opts.signal);
 });
 
@@ -48,4 +49,21 @@ test('private URLs, model text and errors cannot leak into startup log result',a
   assert.equal(JSON.stringify(result).includes('tskey-auth'),false);
   const invalid=await qwenStartupProbe({env,fetchImpl:async()=>new Response('unexpected HTML',{headers:{'content-type':'text/html'}})});
   assert.equal(invalid,'invalid_content_type');
+});
+
+test('catalog reachability is distinct from generation and missing models do not trigger inference',async()=>{
+ const calls=[],events=[];
+ await qwenReleaseProbe({env,fetchImpl:async(url,opts)=>{calls.push({url,opts});return Response.json({data:[{id:'other'}]});}},(stage,status)=>events.push([stage,status]));
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].url,'https://qwen.example.ts.net/v1/models');
+ assert.equal(calls[0].opts.method,'GET');
+ assert.deepEqual(events,[['catalog','model_missing'],['inference','skipped']]);
+});
+test('healthy catalog permits one bounded real inference; timeout is separately reported',async()=>{
+ const calls=[],events=[];
+ await qwenReleaseProbe({env,fetchImpl:async(url,opts)=>{calls.push({url,opts});if(url.endsWith('/models'))return Response.json({data:[{id:'qwen3-coder:30b'}]});throw new DOMException('not exposed','TimeoutError');}},(stage,status)=>events.push([stage,status]));
+ assert.equal(calls.length,2);
+ assert.deepEqual(events,[['catalog','model_present'],['inference','timeout']]);
+ assert.equal(await qwenConnectivityProbe({env,fetchImpl:async()=>Response.json({data:'bad'})}),'invalid_catalog');
+ assert.equal(await qwenConnectivityProbe({env,fetchImpl:async()=>{throw new DOMException('secret','TimeoutError')}}),'timeout');
 });
