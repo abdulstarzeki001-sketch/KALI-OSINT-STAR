@@ -14,14 +14,20 @@ test('observer matches approved job, exact head/base and never changes authorita
  assert.equal((await observe(env,f,123)).observed,1);assert.equal(calls.length,2);
  assert.equal(sql.prepare('SELECT state FROM star_developer_v2').get().state,'queued');const row=sql.prepare('SELECT * FROM star_v3_observation').get();assert.equal(row.pr,12);assert.equal(row.head,head);assert.equal(row.executor_id,42);
  assert.equal(matchObservation({id,base_sha:base},[{...run,head_sha:head}],[{...pr,base:{ref:'main',sha:head}}]).observation,'not_seen');
- await assert.rejects(observe(env,async()=>new Response(null,{status:429}),124));assert.equal(sql.prepare('SELECT status FROM star_v3_monitor_heartbeat').get().status,'upstream_error:runs_rate_limited,prs_rate_limited');assert.equal(sql.prepare('SELECT checked FROM star_v3_observation').get().checked,123);
- await assert.rejects(observe(env,async(url)=>url.includes('/actions/')?Response.json({workflow_runs:[]}):new Response(null,{status:403,headers:{'x-ratelimit-remaining':'0'}}),125));
- assert.equal(sql.prepare('SELECT status FROM star_v3_monitor_heartbeat').get().status,'upstream_error:prs_rate_limited');
- assert.equal(sql.prepare('SELECT checked FROM star_v3_observation').get().checked,123);
+ let requests=0;
+ const state=()=>sql.prepare('SELECT status FROM star_v3_monitor_heartbeat').get().status;
+ const evidence=()=>sql.prepare('SELECT checked FROM star_v3_observation').get().checked;
+ await assert.rejects(observe(env,async()=>{requests++;return new Response(null,{status:429,headers:{'retry-after':'1800'}});},124));
+ assert.equal(requests,1);assert.equal(state(),'upstream_error:runs_rate_limited;retry_at=1800124;attempt=1');assert.equal(evidence(),123);
+ const skip=await observe(env,async()=>{throw Error('must not fetch during cooldown');},125);assert.equal(skip.status,'backoff');assert.equal(skip.retryAt,1800124);assert.equal(evidence(),123);
+ await assert.rejects(observe(env,async(url)=>{requests++;return url.includes('/actions/')?Response.json({workflow_runs:[]}):new Response(null,{status:403,headers:{'x-ratelimit-remaining':'0','x-ratelimit-reset':'5400'}});},1800124));
+ assert.equal(requests,3);assert.equal(state(),'upstream_error:prs_rate_limited;retry_at=5400000;attempt=2');assert.equal(evidence(),123);
+ assert.equal((await observe(env,async()=>{throw Error('must not fetch');},5399999)).status,'backoff');
  let aborted=0;
- await assert.rejects(observe(env,async(_url,init)=>{init.signal.addEventListener('abort',()=>aborted++,{once:true});return new Promise(()=>{});},126,{timeoutMs:10}));
- assert.equal(aborted,2);assert.equal(sql.prepare('SELECT status FROM star_v3_monitor_heartbeat').get().status,'upstream_error:runs_timeout,prs_timeout');
- assert.equal(sql.prepare('SELECT checked FROM star_v3_observation').get().checked,123);
+ await assert.rejects(observe(env,async(_url,init)=>{init.signal.addEventListener('abort',()=>aborted++,{once:true});return new Promise(()=>{});},5400000,{timeoutMs:10}));
+ assert.equal(aborted,1);assert.equal(state(),'upstream_error:runs_timeout');assert.equal(evidence(),123);
+ assert.equal((await observe(env,f,5400001)).status,'ok');assert.equal(state(),'ok');assert.equal(evidence(),5400001);
+ await assert.rejects(observe(env,async()=>new Response(null,{status:403}),5400002));assert.equal(state(),'upstream_error:runs_http_403;retry_at=6300002;attempt=1');
  assert.equal((await worker.fetch()).status,404);
  }finally{sql.close();}
 });
